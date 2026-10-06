@@ -64,6 +64,11 @@ export function findFirstIndexAtOrAfter(sorted: CrashRound[], targetTimeMs: numb
    1. ANATOMIA DA QUEBRA DE MÁXIMA & TETO PRÉ-QUEBRA (10 MINUTOS ANTES)
    ========================================================================== */
 
+export interface RosaItemPre {
+  mult: number;
+  timeStr: string;
+}
+
 export interface QuebraMaximaItem {
   id: string;
   round: CrashRound;
@@ -71,10 +76,22 @@ export interface QuebraMaximaItem {
   timeStr: string;
   maxAnterior: number;
   novoMax: number;
+  // Dados da Seca (Ausência de Vela Rosa)
+  secaRodadas: number;
+  secaMinutos: number;
+  secaInicioTimeMs: number;
+  secaInicioTimeStr: string;
+  secaFimTimeMs: number;
+  secaFimTimeStr: string;
+  isMaiorSecaDoDia: boolean;
+  maiorSecaAnteriorRodadas: number;
   // Teto Pré-Quebra (10 minutos antes: [timestamp - 10m, timestamp])
   valorTetoRosa: number;
+  horarioTetoRosa?: string;
   veioDe10mRosa: boolean;
-  valorProtecaoRoxa: number;
+  rosas10m: RosaItemPre[];
+  valorProtecaoRoxa: number; // Maior roxa 4x-9.99x até 5 minutos antes
+  horarioProtecaoRoxa?: string;
   tetoAltoBatido: boolean; // Se a vela de quebra ou alguma posterior bateu valorTetoRosa
   protecaoAtingida: boolean; // Se bateu valorProtecaoRoxa
   // Casas de Rosa (contagem sequencial de velas >= 10x após a quebra)
@@ -98,6 +115,7 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
 
   const quebras: QuebraMaximaItem[] = [];
   let maxAtual = 0;
+  let recordeSecaDoDia = 0;
 
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
@@ -107,49 +125,102 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
       const maxAnterior = maxAtual;
       maxAtual = r.result;
 
-      // 1. Janela de Análise Pré-Quebra: [rTime - 10 minutos, rTime]
+      // 1. Cálculo da Seca (Ausência de vela rosa antes deste rompimento)
+      let ultimaRosaIdx = -1;
+      for (let k = i - 1; k >= 0; k--) {
+        if (sorted[k].result >= 10.0) {
+          ultimaRosaIdx = k;
+          break;
+        }
+      }
+
+      let secaRodadas = 0;
+      let secaInicioTimeMs = rTime;
+      let secaInicioTimeStr = formatBrTime(r.instant);
+
+      if (ultimaRosaIdx >= 0) {
+        secaRodadas = i - ultimaRosaIdx - 1;
+        secaInicioTimeMs = getRoundTime(sorted[ultimaRosaIdx]);
+        secaInicioTimeStr = formatBrTime(sorted[ultimaRosaIdx].instant);
+      } else {
+        secaRodadas = i;
+        secaInicioTimeMs = getRoundTime(sorted[0]);
+        secaInicioTimeStr = formatBrTime(sorted[0].instant);
+      }
+
+      const secaFimTimeMs = rTime;
+      const secaFimTimeStr = formatBrTime(r.instant);
+      const secaMinutos = Math.max(1, Math.round(Math.abs(secaFimTimeMs - secaInicioTimeMs) / 60000));
+
+      const isMaiorSecaDoDia = secaRodadas > recordeSecaDoDia;
+      const maiorSecaAnteriorRodadas = recordeSecaDoDia;
+      if (isMaiorSecaDoDia) {
+        recordeSecaDoDia = secaRodadas;
+      }
+
+      // 2. Teto de Roxa (4.00x a 9.99x) até 5 minutos antes da quebra
+      const cincoMinAntes = rTime - 5 * 60 * 1000;
+      const roxas5m = sorted.slice(0, i).filter((v) => {
+        const vt = getRoundTime(v);
+        return vt >= cincoMinAntes && vt <= rTime && v.result >= 4.0 && v.result < 10.0;
+      });
+
+      let valorProtecaoRoxa = 0;
+      let horarioProtecaoRoxa: string | undefined = undefined;
+
+      if (roxas5m.length > 0) {
+        let bestRoxa = roxas5m[0];
+        for (const rx of roxas5m) {
+          if (rx.result > bestRoxa.result) bestRoxa = rx;
+        }
+        valorProtecaoRoxa = bestRoxa.result;
+        horarioProtecaoRoxa = formatBrTime(bestRoxa.instant);
+      } else {
+        // Fallback: última roxa anterior mais próxima
+        for (let k = i - 1; k >= 0; k--) {
+          if (sorted[k].result >= 4.0 && sorted[k].result < 10.0) {
+            valorProtecaoRoxa = sorted[k].result;
+            horarioProtecaoRoxa = formatBrTime(sorted[k].instant);
+            break;
+          }
+        }
+      }
+
+      // 3. Teto de Rosa (>= 10.00x) até 10 minutos antes da quebra
       const dezMinAntes = rTime - 10 * 60 * 1000;
-      const velasPre = sorted.slice(0, i).filter((v) => {
+      const velasPre10m = sorted.slice(0, i).filter((v) => {
         const vt = getRoundTime(v);
         return vt >= dezMinAntes && vt <= rTime;
       });
 
-      // Teto de Vela Rosa (>= 10.00x)
-      const rosasPre = velasPre.filter((v) => v.result >= 10.0);
+      const rosasPre10m = velasPre10m.filter((v) => v.result >= 10.0);
+      const rosas10m: RosaItemPre[] = rosasPre10m.map((v) => ({
+        mult: v.result,
+        timeStr: formatBrTime(v.instant),
+      }));
+
       let valorTetoRosa = 0;
+      let horarioTetoRosa: string | undefined = undefined;
       let veioDe10mRosa = false;
 
-      if (rosasPre.length > 0) {
-        valorTetoRosa = Math.max(...rosasPre.map((v) => v.result));
+      if (rosasPre10m.length > 0) {
+        let bestRosa = rosasPre10m[0];
+        for (const rs of rosasPre10m) {
+          if (rs.result > bestRosa.result) bestRosa = rs;
+        }
+        valorTetoRosa = bestRosa.result;
+        horarioTetoRosa = formatBrTime(bestRosa.instant);
         veioDe10mRosa = true;
       } else {
-        // Fallback: buscar a última rosa anterior no histórico
-        for (let k = i - 1; k >= 0; k--) {
-          if (sorted[k].result >= 10.0) {
-            valorTetoRosa = sorted[k].result;
-            veioDe10mRosa = false;
-            break;
-          }
+        // Fallback: última rosa anterior no histórico
+        if (ultimaRosaIdx >= 0) {
+          valorTetoRosa = sorted[ultimaRosaIdx].result;
+          horarioTetoRosa = formatBrTime(sorted[ultimaRosaIdx].instant);
+          veioDe10mRosa = false;
         }
       }
 
-      // Previsão de Proteção Roxa (4.00x a 9.99x)
-      const roxasPre = velasPre.filter((v) => v.result >= 4.0 && v.result < 10.0);
-      let valorProtecaoRoxa = 0;
-      if (roxasPre.length > 0) {
-        valorProtecaoRoxa = Math.max(...roxasPre.map((v) => v.result));
-      } else {
-        // Fallback: última roxa anterior
-        for (let k = i - 1; k >= 0; k--) {
-          if (sorted[k].result >= 4.0 && sorted[k].result < 10.0) {
-            valorProtecaoRoxa = sorted[k].result;
-            break;
-          }
-        }
-      }
-
-      // 2. Casas de Rosa Pós-Máxima
-      // Pegar todas as rodadas após a quebra até o final (ou próxima quebra)
+      // 4. Casas de Rosa Pós-Máxima
       const casasDeRosa: CasaDeRosaItem[] = [];
       let tirosContados = 0;
       let casaNum = 1;
@@ -189,9 +260,20 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
         timeStr: formatBrTime(r.instant),
         maxAnterior,
         novoMax: r.result,
+        secaRodadas,
+        secaMinutos,
+        secaInicioTimeMs,
+        secaInicioTimeStr,
+        secaFimTimeMs,
+        secaFimTimeStr,
+        isMaiorSecaDoDia,
+        maiorSecaAnteriorRodadas,
         valorTetoRosa: valorTetoRosa || 10.0,
+        horarioTetoRosa,
         veioDe10mRosa,
+        rosas10m,
         valorProtecaoRoxa: valorProtecaoRoxa || 4.0,
+        horarioProtecaoRoxa,
         tetoAltoBatido,
         protecaoAtingida,
         casasDeRosa,
@@ -212,12 +294,20 @@ export interface EntradaRapida {
   minutoOffset: number; // ex: 10, 20, 30, 40
   tempoAlvoMs: number;
   tempoAlvoStr: string;
-  tiros: CrashRound[]; // até 5 velas consecutivas
+  janelaEntrarMs: number; // tempoAlvoMs - 2 * 60 * 1000
+  janelaEntrarStr: string;
+  janelaPararMs: number; // tempoAlvoMs + 2 * 60 * 1000
+  janelaPararStr: string;
+  toleranciaMin: number; // 2
+  velasNaJanela: CrashRound[]; // todas as velas que saíram na janela de entrar até parar
+  tiros: CrashRound[]; // até 5 velas consecutivas do minuto alvo
   status: 'GREEN' | 'LOSS' | 'PENDENTE' | 'AGUARDANDO';
   tiroGreen?: number; // 1 a 5
   velaGreen?: CrashRound;
   bateuProtecao: boolean;
   tiroProtecao?: number;
+  tetoAltoBatido: boolean;
+  maiorVelaNaJanela?: number;
 }
 
 export interface CicloProjecaoRapida {
@@ -271,7 +361,18 @@ export function processarProjecaoRapida(
       const minOffset = intervalosCustom[i];
       const tempoAlvoMs = t0 + minOffset * 60 * 1000;
       const targetMinStartMs = Math.floor(tempoAlvoMs / 60000) * 60000;
-      const tempoAlvoStr = formatBrTimeHM(new Date(tempoAlvoMs).toISOString());
+      const tempoAlvoStr = formatBrTime(new Date(tempoAlvoMs).toISOString());
+
+      const janelaEntrarMs = tempoAlvoMs - 2 * 60 * 1000;
+      const janelaEntrarStr = formatBrTime(new Date(janelaEntrarMs).toISOString());
+      const janelaPararMs = tempoAlvoMs + 2 * 60 * 1000;
+      const janelaPararStr = formatBrTime(new Date(janelaPararMs).toISOString());
+
+      // Coletar todas as velas na janela [janelaEntrarMs, janelaPararMs]
+      const velasNaJanela = sorted.filter((v) => {
+        const vt = getRoundTime(v);
+        return vt >= janelaEntrarMs && vt <= janelaPararMs;
+      });
 
       // Busca binária rápida O(log N) para localizar a rodada dentro do minuto alvo
       const startIdx = findFirstIndexAtOrAfter(sorted, targetMinStartMs);
@@ -282,6 +383,14 @@ export function processarProjecaoRapida(
       let velaGreen: CrashRound | undefined = undefined;
       let bateuProtecao = false;
       let tiroProtecao: number | undefined = undefined;
+
+      // Verifica se houve green em velasNaJanela ou nos tiros
+      const hitRosaNaJanela = velasNaJanela.find((v) => v.result >= alvoY);
+      const hitProtecaoNaJanela = velasNaJanela.some((v) => v.result >= protecaoX);
+      const maiorVelaNaJanela =
+        velasNaJanela.length > 0 ? Math.max(...velasNaJanela.map((v) => v.result)) : undefined;
+      const tetoAltoBatido =
+        q.valorTetoRosa > 0 ? velasNaJanela.some((v) => v.result >= q.valorTetoRosa) : false;
 
       if (startIdx !== -1 && getRoundTime(sorted[startIdx]) <= tempoAlvoMs + 3 * 60 * 1000) {
         // Coletar até 5 rodadas consecutivas
@@ -299,26 +408,35 @@ export function processarProjecaoRapida(
             status = 'GREEN';
             tiroGreen = t + 1;
             velaGreen = vela;
-            // PARADA IMEDIATA: não joga nem contabiliza mais tiros!
             break;
           }
         }
 
         if (status !== 'GREEN') {
-          if (slice.length >= 5 || effectiveNowMs >= tempoAlvoMs + 3 * 60 * 1000) {
+          if (hitRosaNaJanela) {
+            status = 'GREEN';
+            velaGreen = hitRosaNaJanela;
+          } else if (slice.length >= 5 || effectiveNowMs >= janelaPararMs) {
             status = 'LOSS';
           } else {
             status = 'PENDENTE';
           }
         }
       } else {
-        if (effectiveNowMs < targetMinStartMs) {
+        if (hitRosaNaJanela) {
+          status = 'GREEN';
+          velaGreen = hitRosaNaJanela;
+        } else if (effectiveNowMs < janelaEntrarMs) {
           status = 'AGUARDANDO';
-        } else if (effectiveNowMs >= tempoAlvoMs + 3 * 60 * 1000) {
+        } else if (effectiveNowMs >= janelaPararMs) {
           status = 'LOSS';
         } else {
           status = 'PENDENTE';
         }
+      }
+
+      if (hitProtecaoNaJanela) {
+        bateuProtecao = true;
       }
 
       entradas.push({
@@ -326,12 +444,20 @@ export function processarProjecaoRapida(
         minutoOffset: minOffset,
         tempoAlvoMs,
         tempoAlvoStr,
+        janelaEntrarMs,
+        janelaEntrarStr,
+        janelaPararMs,
+        janelaPararStr,
+        toleranciaMin: 2,
+        velasNaJanela,
         tiros,
         status,
         tiroGreen,
         velaGreen,
         bateuProtecao,
         tiroProtecao,
+        tetoAltoBatido,
+        maiorVelaNaJanela,
       });
     }
 
@@ -448,6 +574,15 @@ export interface SinalLongoItem {
   minutoOffset: number; // ex: 45, 60, 75...
   tempoProjetadoMs: number;
   tempoProjetadoStr: string;
+  janelaEntrarMs: number;
+  janelaEntrarStr: string;
+  janelaPararMs: number;
+  janelaPararStr: string;
+  toleranciaMin: number;
+  velasNaJanela: CrashRound[];
+  secaRodadas: number;
+  secaMinutos: number;
+  secaInicioTimeStr: string;
   tiros: CrashRound[];
   status: 'GREEN' | 'LOSS' | 'SINAL_ATIVO';
   velaGreen?: CrashRound;
@@ -492,14 +627,40 @@ export function processarProjecaoLonga(
 
   for (const g of gatilhos) {
     const gTime = getRoundTime(g);
+    const gIdx = sorted.findIndex((r) => r.uuid === g.uuid);
+    let prevRosaIdx = -1;
+    if (gIdx > 0) {
+      for (let k = gIdx - 1; k >= 0; k--) {
+        if (sorted[k].result >= 10.0) {
+          prevRosaIdx = k;
+          break;
+        }
+      }
+    }
+    const secaRodadas = prevRosaIdx >= 0 ? gIdx - prevRosaIdx - 1 : Math.max(0, gIdx);
+    const secaInicioTimeMs =
+      prevRosaIdx >= 0
+        ? getRoundTime(sorted[prevRosaIdx])
+        : sorted.length > 0
+        ? getRoundTime(sorted[0])
+        : gTime;
+    const secaInicioTimeStr = formatBrTime(new Date(secaInicioTimeMs).toISOString());
+    const secaMinutos = Math.max(1, Math.round(Math.abs(gTime - secaInicioTimeMs) / 60000));
 
     for (const offset of intervalosLongos) {
       const tempoProjetadoMs = gTime + offset * 60 * 1000;
-      const tempoProjetadoStr = formatBrTimeHM(new Date(tempoProjetadoMs).toISOString());
+      const tempoProjetadoStr = formatBrTime(new Date(tempoProjetadoMs).toISOString());
 
-      // Janela com tolerância ou 5 velas consecutivas a partir do minuto projetado - tolerancia
+      // Janela com tolerância
       const inicioJanelaMs = tempoProjetadoMs - toleranciaMin * 60 * 1000;
       const fimJanelaMs = tempoProjetadoMs + (toleranciaMin + 2) * 60 * 1000;
+      const janelaEntrarStr = formatBrTime(new Date(inicioJanelaMs).toISOString());
+      const janelaPararStr = formatBrTime(new Date(fimJanelaMs).toISOString());
+
+      const velasNaJanela = sorted.filter((v) => {
+        const vt = getRoundTime(v);
+        return vt >= inicioJanelaMs && vt <= fimJanelaMs;
+      });
 
       const startIdx = findFirstIndexAtOrAfter(sorted, inicioJanelaMs);
 
@@ -554,6 +715,15 @@ export function processarProjecaoLonga(
         minutoOffset: offset,
         tempoProjetadoMs,
         tempoProjetadoStr,
+        janelaEntrarMs: inicioJanelaMs,
+        janelaEntrarStr,
+        janelaPararMs: fimJanelaMs,
+        janelaPararStr,
+        toleranciaMin,
+        velasNaJanela,
+        secaRodadas,
+        secaMinutos,
+        secaInicioTimeStr,
         tiros,
         status,
         velaGreen,

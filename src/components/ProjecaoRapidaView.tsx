@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CrashRound } from '../types';
 import {
   processarProjecaoRapida,
@@ -18,23 +18,44 @@ import {
   Sparkles,
   ArrowRight,
   Flame,
-  Settings2,
-  Sliders,
+  Hourglass,
+  Bell,
+  Play,
+  Award,
+  Calendar,
 } from 'lucide-react';
 
 interface ProjecaoRapidaViewProps {
   rounds: CrashRound[];
   onSelectRound?: (round: CrashRound) => void;
+  houseName?: string;
+}
+
+function formatCountdown(targetMs: number, nowMs: number): string {
+  const diffSec = Math.max(0, Math.floor((targetMs - nowMs) / 1000));
+  const m = Math.floor(diffSec / 60);
+  const s = diffSec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
   rounds,
   onSelectRound,
+  houseName = 'TORRE BET',
 }) => {
   // Configuração dos 4 Intervalos
   const [intervalos, setIntervalos] = useState<number[]>([10, 20, 30, 40]);
   const [protecaoX, setProtecaoX] = useState<number>(2.0);
   const [alvoY, setAlvoY] = useState<number>(10.0);
+
+  // Relógio em tempo real para contagem regressiva a cada 1 segundo
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const { ciclos, ranking, top4Recomendados, taxaGeralAcerto } = useMemo(() => {
     return processarProjecaoRapida(rounds, intervalos, protecaoX, alvoY);
@@ -68,15 +89,14 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
                 SISTEMA AUTOMÁTICO
               </span>
               <span className="text-xs text-slate-400">
-                Pós-Quebra de Máxima do Dia (T0)
+                Pós-Rompimento de Maior Seca / Quebra de Máxima (T0)
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black font-display text-white">
               Projeção Rápida: 4 Entradas (T0 +10m a +40m)
             </h2>
             <p className="text-xs text-slate-400 max-w-2xl mt-1">
-              Monitora quebras de máxima e dispara 4 janelas temporais com até 5 tentativas consecutivas cada. 
-              Parada imediata ao bater o alvo. O ciclo é GREEN se ao menos 1 das 4 entradas pagar.
+              Rastreia períodos de seca (ausência de velas rosas), monitora a base de teto pré-quebra e dispara as 4 janelas temporais com contagem regressiva ao vivo e tolerância de ±2 min.
             </p>
           </div>
 
@@ -175,11 +195,11 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
       </div>
 
       {/* Grid com Ciclos Auditados */}
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
             <Flame className="w-4 h-4 text-pink-500" />
-            Ciclos de Quebra de Máxima Auditados ({ciclos.length})
+            Ciclos de Quebra de Máxima e Seca Auditados ({ciclos.length})
           </h3>
           <span className="text-xs text-slate-400 font-mono-num">
             Critério 1 de 4: GREEN se ao menos 1 entrada pagar {alvoY.toFixed(2)}x
@@ -191,26 +211,28 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
             Nenhuma quebra de máxima detectada no histórico de hoje.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
+          <div className="space-y-8">
             {ciclos.map((ciclo) => {
               const isCicloGreen = ciclo.statusCiclo === 'GREEN';
               const isCicloLoss = ciclo.statusCiclo === 'LOSS';
+              const { quebra } = ciclo;
+
               return (
                 <div
                   key={ciclo.id}
                   className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                     isCicloGreen
-                      ? 'bg-gradient-to-br from-slate-950 via-emerald-950/15 to-slate-950 border-emerald-500/40 shadow-lg shadow-emerald-950/20'
+                      ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border-emerald-500/40 shadow-xl shadow-emerald-950/20'
                       : isCicloLoss
-                      ? 'bg-gradient-to-br from-slate-950 via-rose-950/15 to-slate-950 border-rose-500/40'
+                      ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border-rose-500/40'
                       : 'bg-slate-950/90 border-slate-800'
                   }`}
                 >
-                  {/* Cabeçalho do Ciclo */}
+                  {/* Cabeçalho do Ciclo: Quebra de Máxima e Status */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${
                           isCicloGreen
                             ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                             : isCicloLoss
@@ -228,24 +250,23 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
                       </div>
 
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-bold text-slate-300">
                             QUEBRA DE MÁXIMA:
                           </span>
-                          <span className="text-base font-black text-pink-400 font-mono-num">
+                          <span className="text-lg font-black text-pink-400 font-mono-num">
                             {ciclo.maxima.toFixed(2)}x
                           </span>
-                          <span className="text-xs text-slate-500 font-mono-num">
+                          <span className="text-xs text-slate-400 font-mono-num">
                             às {ciclo.horarioQuebra}
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-400">
-                          Superou teto anterior de {ciclo.quebra.maxAnterior.toFixed(2)}x
+                          Superou teto anterior de {quebra.maxAnterior.toFixed(2)}x
                         </span>
                       </div>
                     </div>
 
-                    {/* Status Badge do Ciclo */}
                     <div className="flex items-center gap-2">
                       <span
                         className={`px-3 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${
@@ -256,108 +277,303 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
                             : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                         }`}
                       >
-                        {isCicloGreen ? 'CICLO GREEN (1/4 PAGO)' : isCicloLoss ? 'CICLO LOSS' : 'EM ANDAMENTO'}
+                        {isCicloGreen
+                          ? `CICLO GREEN (${ciclo.totalGreens}/4 PAGO)`
+                          : isCicloLoss
+                          ? 'CICLO LOSS'
+                          : 'EM ANDAMENTO'}
                       </span>
                     </div>
                   </div>
 
-                  {/* As 4 Entradas do Ciclo (Grid 2x2: duas em cima, duas em baixo) */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4">
+                  {/* BANNER DA BASE DE TETO (10 MIN ANTES DA QUEBRA) + DADOS DA SECA */}
+                  <div className="my-4 p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 text-xs space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-black text-[10px] tracking-wide border border-cyan-500/40 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-cyan-300" />
+                          BASE DE TETO (10 MIN ANTES DA QUEBRA)
+                        </span>
+                        <span className="text-slate-400 text-[11px]">
+                          Velas anteriores à quebra ({ciclo.horarioQuebra}):
+                        </span>
+                      </div>
+
+                      {/* Destaque de Maior Seca */}
+                      {quebra.isMaiorSecaDoDia && (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/30 flex items-center gap-1">
+                          <Award className="w-3 h-3 text-amber-400" />
+                          MAIOR SECA DO DIA! (Superou {quebra.maiorSecaAnteriorRodadas} rodadas)
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Linha 1: Previsão de Proteção Roxa (5m antes) e Teto Alto (10m antes) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                      <div className="flex items-center gap-2 bg-slate-950/70 p-2 rounded-lg border border-purple-500/20">
+                        <Shield className="w-4 h-4 text-purple-400 shrink-0" />
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">
+                            Previsão Proteção (Roxa 4x-9.99x):
+                          </span>
+                          <span className="text-xs font-bold text-purple-300 font-mono-num">
+                            {quebra.valorProtecaoRoxa > 0
+                              ? `${quebra.valorProtecaoRoxa.toFixed(2)}x ${
+                                  quebra.horarioProtecaoRoxa ? `(${quebra.horarioProtecaoRoxa})` : ''
+                                }`
+                              : 'Sem roxa nos 5m'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-slate-950/70 p-2 rounded-lg border border-pink-500/20">
+                        <Target className="w-4 h-4 text-pink-400 shrink-0" />
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">
+                            Teto Alto (≥10x pré-quebra):
+                          </span>
+                          <span className="text-xs font-bold text-pink-300 font-mono-num">
+                            {quebra.valorTetoRosa > 0
+                              ? `${quebra.valorTetoRosa.toFixed(2)}x ${
+                                  quebra.horarioTetoRosa ? `(${quebra.horarioTetoRosa})` : ''
+                                }`
+                              : '10.00x'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Duração e Horários da Seca */}
+                      <div className="flex items-center gap-2 bg-slate-950/70 p-2 rounded-lg border border-amber-500/20 sm:col-span-2 lg:col-span-1">
+                        <Flame className="w-4 h-4 text-amber-400 shrink-0" />
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-medium">
+                            Duração da Seca (Ausência de Rosa):
+                          </span>
+                          <span className="text-xs font-bold text-amber-300 font-mono-num">
+                            {quebra.secaRodadas} Rodadas ({quebra.secaMinutos} min)
+                          </span>
+                          <span className="text-[10px] text-slate-500 block font-mono-num">
+                            Início: {quebra.secaInicioTimeStr} • Fim: {quebra.secaFimTimeStr}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Linha 2: Rosas que saíram nos 10 minutos anteriores */}
+                    <div className="flex items-center gap-2 flex-wrap pt-1 text-[11px]">
+                      <span className="text-slate-400 font-semibold flex items-center gap-1">
+                        🌸 Saiu antes (10 minutos):
+                      </span>
+                      {quebra.rosas10m.length > 0 ? (
+                        <>
+                          <div className="flex items-center gap-1.5 flex-wrap font-mono-num">
+                            {quebra.rosas10m.map((r, rIdx) => (
+                              <span
+                                key={rIdx}
+                                className="px-1.5 py-0.5 rounded bg-pink-950/70 border border-pink-500/40 text-pink-300 font-bold"
+                              >
+                                {r.mult.toFixed(2)}x
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-slate-400">
+                            | Maior:{' '}
+                            <strong className="text-pink-400 font-mono-num font-bold">
+                              {quebra.valorTetoRosa.toFixed(2)}x
+                            </strong>
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-slate-500 italic">
+                          Nenhuma vela rosa nos 10m anteriores (seca profunda).
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* AS 4 COLUNAS VERTICAIS DE ENTRADA (Estilo Imagem 2 TopGun) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
                     {ciclo.entradas.map((entrada) => {
                       const isGreen = entrada.status === 'GREEN';
                       const isLoss = entrada.status === 'LOSS';
-                      const isAguardando = entrada.status === 'AGUARDANDO';
+                      const isAguardando = nowMs < entrada.janelaEntrarMs;
+                      const isJanelaAberta =
+                        nowMs >= entrada.janelaEntrarMs && nowMs <= entrada.janelaPararMs;
+                      const isEncerrada = nowMs > entrada.janelaPararMs;
+
+                      // Contagem regressiva
+                      const contagemTexto = isAguardando
+                        ? `Inicia em: ${formatCountdown(entrada.janelaEntrarMs, nowMs)}`
+                        : isJanelaAberta
+                        ? `Janela Aberta (${formatCountdown(entrada.janelaPararMs, nowMs)} restantes)`
+                        : `Encerrada às ${entrada.janelaPararStr}`;
 
                       return (
                         <div
                           key={entrada.indice}
-                          className={`p-3 rounded-xl border text-xs flex flex-col justify-between gap-2 ${
+                          className={`rounded-2xl border flex flex-col justify-between overflow-hidden transition-all shadow-lg ${
                             isGreen
-                              ? 'bg-emerald-950/30 border-emerald-500/40 shadow-sm shadow-emerald-950/20'
+                              ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-emerald-500/60 shadow-emerald-950/30'
+                              : isJanelaAberta
+                              ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-cyan-500/60 shadow-cyan-950/30 ring-1 ring-cyan-500/40'
                               : isLoss
-                              ? 'bg-rose-950/20 border-rose-500/30'
-                              : 'bg-slate-900/80 border-slate-800'
+                              ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-rose-500/40'
+                              : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-slate-800'
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-200">
-                              {entrada.indice}ª Entrada (+{entrada.minutoOffset}m)
+                          {/* Topo do Card: Badge da Entrada e Casa */}
+                          <div className="p-3 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between">
+                            <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                              <Zap className="w-3 h-3 text-cyan-400" />
+                              {houseName.toUpperCase()} ENTRADA {entrada.indice} (+{entrada.minutoOffset}m)
                             </span>
-                            <span className="font-mono-num text-[11px] text-slate-300 font-semibold">
-                              Horário: {entrada.tempoAlvoStr}
+                            <span className="text-[10px] text-slate-400 font-mono-num">
+                              ±2 min tol.
                             </span>
                           </div>
 
-                          {/* Status da Entrada */}
-                          <div className="flex items-center justify-between pt-1">
-                            <span
-                              className={`font-extrabold text-[11px] px-2 py-0.5 rounded ${
-                                isGreen
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : isLoss
-                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                                  : 'bg-slate-800 text-slate-400'
-                              }`}
-                            >
-                              {isGreen
-                                ? `GREEN (Tiro ${entrada.tiroGreen})`
-                                : isLoss
-                                ? `LOSS (${entrada.tiros.length || 5} tiros)`
-                                : isAguardando
-                                ? 'AGUARDANDO'
-                                : 'PENDENTE'}
+                          {/* Relógio Central Gigante com Ícone */}
+                          <div className="p-4 text-center border-b border-slate-800/60 bg-slate-950/40">
+                            <div className="flex items-center justify-center gap-2 mb-1">
+                              <Clock className="w-5 h-5 text-cyan-400 animate-pulse" />
+                              <span className="text-2xl sm:text-3xl font-black font-mono-num text-cyan-300 tracking-wider">
+                                {entrada.tempoAlvoStr}
+                              </span>
+                            </div>
+
+                            <span className="text-[11px] font-extrabold text-amber-400 uppercase tracking-widest block mb-2">
+                              {houseName.toUpperCase()}
                             </span>
 
-                            {entrada.bateuProtecao && (
-                              <span className="text-[10px] text-purple-300 font-semibold flex items-center gap-0.5 bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/40">
-                                <Shield className="w-3 h-3 text-purple-400" />
-                                Prot. {protecaoX.toFixed(2)}x (Tiro {entrada.tiroProtecao})
-                              </span>
+                            {/* Janela de Tolerância: Entrar e Parar */}
+                            <div className="text-[10px] text-slate-300 font-mono-num flex items-center justify-center gap-1.5 bg-slate-900/90 py-1 px-2 rounded-lg border border-slate-800">
+                              <span>Entrar: <strong className="text-emerald-400">{entrada.janelaEntrarStr}</strong></span>
+                              <span>•</span>
+                              <span>Parar: <strong className="text-rose-400">{entrada.janelaPararStr}</strong></span>
+                            </div>
+                          </div>
+
+                          {/* Faixa de Status / Contagem Regressiva em Tempo Real */}
+                          <div className="px-3 py-2 bg-slate-950 border-b border-slate-800/80">
+                            {isGreen ? (
+                              <div className="py-1 px-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-black text-xs text-center flex items-center justify-center gap-1.5 shadow-sm">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                <span>BATEU ({entrada.velaGreen?.result.toFixed(2)}x)</span>
+                              </div>
+                            ) : isJanelaAberta ? (
+                              <div className="py-1 px-2.5 rounded-lg bg-cyan-500/20 border border-cyan-500/60 text-cyan-300 font-black text-xs text-center flex items-center justify-center gap-1.5 animate-pulse">
+                                <Play className="w-3.5 h-3.5 text-cyan-400" />
+                                <span>{contagemTexto}</span>
+                              </div>
+                            ) : isAguardando ? (
+                              <div className="py-1 px-2.5 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-bold text-xs text-center flex items-center justify-center gap-1.5 font-mono-num">
+                                <Hourglass className="w-3.5 h-3.5 text-indigo-400" />
+                                <span>{contagemTexto}</span>
+                              </div>
+                            ) : (
+                              <div className="py-1 px-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                                <span>PAROU DE PEGAR VELAS ({entrada.janelaPararStr})</span>
+                              </div>
                             )}
                           </div>
 
-                          {/* Tiros executados (até 5 velas) */}
-                          <div className="pt-2 border-t border-slate-800/60">
-                            <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
-                              <span>Velas Auditadas ({entrada.tiros.length}/5):</span>
-                              {isGreen && entrada.velaGreen && (
-                                <span className="text-emerald-400 font-bold font-mono-num">
-                                  Paga: {entrada.velaGreen.result.toFixed(2)}x
+                          {/* Seção Teto da Entrada */}
+                          <div className="p-3 border-b border-slate-800/60 bg-slate-950/30 text-[11px] space-y-1.5">
+                            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                              TETO DA ENTRADA (10m pré-quebra)
+                            </span>
+                            <div className="flex items-center justify-between text-slate-300 font-mono-num">
+                              <span className="flex items-center gap-1">
+                                <Shield className="w-3 h-3 text-purple-400" />
+                                Proteção (4x-9.99x):
+                              </span>
+                              <strong className="text-purple-300">
+                                {quebra.valorProtecaoRoxa > 0 ? `${quebra.valorProtecaoRoxa.toFixed(2)}x` : '--'}
+                              </strong>
+                            </div>
+
+                            <div className="flex items-center justify-between text-slate-300 font-mono-num">
+                              <span className="flex items-center gap-1">
+                                <Target className="w-3 h-3 text-pink-400" />
+                                Teto Alto (≥10x):
+                              </span>
+                              <strong className="text-pink-300">
+                                {quebra.valorTetoRosa > 0 ? `${quebra.valorTetoRosa.toFixed(2)}x` : '10.00x'}
+                              </strong>
+                            </div>
+
+                            {/* Badges de Teto Batido / Proteção Atingida */}
+                            <div className="pt-1 flex flex-col gap-1">
+                              {entrada.tetoAltoBatido && (
+                                <span className="py-0.5 px-2 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold text-[10px] text-center flex items-center justify-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-amber-400" />
+                                  TETO ALTO BATIDO ({entrada.maiorVelaNaJanela?.toFixed(2)}x)
+                                </span>
+                              )}
+
+                              {entrada.bateuProtecao && (
+                                <span className="py-0.5 px-2 rounded bg-purple-500/20 border border-purple-500/40 text-purple-300 font-extrabold text-[10px] text-center flex items-center justify-center gap-1">
+                                  <Shield className="w-3 h-3 text-purple-400" />
+                                  PROTEÇÃO ATINGIDA ({entrada.maiorVelaNaJanela?.toFixed(2)}x)
                                 </span>
                               )}
                             </div>
-                            {entrada.tiros.length > 0 ? (
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {entrada.tiros.map((tiro, tIdx) => {
-                                  const hitAlvo = tiro.result >= alvoY;
-                                  const hitProt = tiro.result >= protecaoX;
-                                  return (
-                                    <span
-                                      key={tiro.uuid || tIdx}
-                                      onClick={() => onSelectRound?.(tiro)}
-                                      className={`px-2 py-1 rounded-lg font-mono-num text-[11px] cursor-pointer font-bold transition-transform hover:scale-105 ${
-                                        hitAlvo
-                                          ? 'bg-pink-500 text-white shadow-md shadow-pink-500/30 ring-1 ring-white/50'
-                                          : hitProt
-                                          ? 'bg-purple-900/80 text-purple-200 border border-purple-500/50'
-                                          : 'bg-slate-800/90 text-slate-300 border border-slate-700/50 hover:bg-slate-700'
-                                      }`}
-                                      title={`Tiro ${tIdx + 1}: ${tiro.result.toFixed(2)}x (${formatBrTime(tiro.instant)}) - Clique para detalhar`}
-                                    >
-                                      {tiro.result.toFixed(2)}x
-                                    </span>
-                                  );
-                                })}
+                          </div>
+
+                          {/* Seção VELAS NA JANELA (Grid com velas e horários) */}
+                          <div className="p-3 bg-slate-950/80 flex-1 flex flex-col justify-between">
+                            <div>
+                              <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-2">
+                                <span>VELAS NA JANELA ({entrada.velasNaJanela.length}):</span>
+                                {isGreen && (
+                                  <span className="text-emerald-400 font-extrabold text-[10px]">
+                                    ✔ BATEU
+                                  </span>
+                                )}
                               </div>
-                            ) : isAguardando ? (
-                              <span className="text-[10px] text-slate-500 italic block py-0.5">
-                                Aguardando horário ({entrada.tempoAlvoStr})...
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-500 italic block py-0.5">
-                                Sem velas registradas neste intervalo.
-                              </span>
-                            )}
+
+                              {entrada.velasNaJanela.length > 0 ? (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-36 overflow-y-auto pr-0.5 scrollbar-thin">
+                                  {entrada.velasNaJanela.map((vela, vIdx) => {
+                                    const isRosa = vela.result >= 10.0;
+                                    const isRoxa = vela.result >= 2.0 && vela.result < 10.0;
+                                    const horaStr = vela.instant
+                                      ? formatBrTime(vela.instant).slice(0, 5)
+                                      : '--:--';
+
+                                    return (
+                                      <div
+                                        key={vela.uuid || vIdx}
+                                        onClick={() => onSelectRound?.(vela)}
+                                        className={`p-1 rounded-lg text-center font-mono-num cursor-pointer transition-transform hover:scale-105 ${
+                                          isRosa
+                                            ? 'bg-pink-600/90 text-white font-black shadow-md shadow-pink-600/30 border border-pink-400 ring-1 ring-white/50'
+                                            : isRoxa
+                                            ? 'bg-purple-900/80 text-purple-200 font-bold border border-purple-600/50'
+                                            : 'bg-slate-900 text-cyan-300 font-semibold border border-slate-800'
+                                        }`}
+                                        title={`${vela.result.toFixed(2)}x às ${formatBrTime(vela.instant)}`}
+                                      >
+                                        <div className="text-[11px] leading-tight">
+                                          {vela.result.toFixed(2)}x
+                                        </div>
+                                        <div className="text-[9px] opacity-75 text-slate-300 leading-none mt-0.5">
+                                          {horaStr}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : isAguardando ? (
+                                <div className="py-4 text-center text-slate-500 italic text-xs">
+                                  Aguardando horário da janela ({entrada.janelaEntrarStr})...
+                                </div>
+                              ) : (
+                                <div className="py-4 text-center text-slate-500 italic text-xs">
+                                  Sem velas registradas nesta janela.
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );

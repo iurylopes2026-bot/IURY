@@ -19,16 +19,29 @@ import {
   Layers,
   ArrowRight,
   Filter,
+  Flame,
+  Shield,
+  Zap,
+  Play,
 } from 'lucide-react';
 
 interface ProjecaoLongaViewProps {
   rounds: CrashRound[];
   onSelectRound?: (round: CrashRound) => void;
+  houseName?: string;
+}
+
+function formatCountdown(targetMs: number, nowMs: number): string {
+  const diffSec = Math.max(0, Math.floor((targetMs - nowMs) / 1000));
+  const m = Math.floor(diffSec / 60);
+  const s = diffSec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
   rounds,
   onSelectRound,
+  houseName = 'TORRE BET',
 }) => {
   const [estrategiaAtiva, setEstrategiaAtiva] = useState<string>('A5'); // Default: A5 (>= 50x)
   const [alvoMult, setAlvoMult] = useState<number>(10.0);
@@ -38,11 +51,11 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
   ]);
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'SINAL_ATIVO' | 'GREEN' | 'LOSS'>('todos');
 
-  // Relógio de contagem regressiva para os sinais ativos
-  const [, setClockTick] = useState(0);
+  // Relógio de contagem regressiva em tempo real
+  const [nowMs, setNowMs] = useState<number>(Date.now());
   useEffect(() => {
     const timer = setInterval(() => {
-      setClockTick((t) => t + 1);
+      setNowMs(Date.now());
     }, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -86,8 +99,7 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
               Projeção Longa VIP: Gatilhos de {estrategiaObj.nome}
             </h2>
             <p className="text-xs text-slate-400 max-w-2xl mt-1">
-              Rastreia velas gatilhos de referência e calcula projeções temporais futuras com tolerância.
-              Monitore os sinais ativos com contador em tempo real até o minuto do tiro.
+              Rastreia velas gatilhos de referência pós-seca e calcula projeções temporais futuras com contagem regressiva ao vivo e tolerância de ±{toleranciaMin}m.
             </p>
           </div>
 
@@ -99,25 +111,30 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
                 {taxaAcertoGeral}%
               </span>
             </div>
-            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-amber-500/30 text-center">
-              <span className="text-[10px] text-slate-400 block font-semibold">SINAIS ATIVOS</span>
-              <span className="text-xl font-black text-amber-400 font-mono-num flex items-center justify-center gap-1">
-                <Radio className="w-4 h-4 animate-pulse text-amber-400" />
-                {totalAtivos}
-              </span>
-            </div>
-            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-emerald-500/30 text-center">
+            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-center">
               <span className="text-[10px] text-slate-400 block font-semibold">GREENS</span>
               <span className="text-xl font-black text-emerald-400 font-mono-num">
                 {totalGreens}
               </span>
             </div>
+            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-center">
+              <span className="text-[10px] text-slate-400 block font-semibold">SINAIS ATIVOS</span>
+              <span className="text-xl font-black text-amber-400 font-mono-num">
+                {totalAtivos}
+              </span>
+            </div>
+            <div className="px-3.5 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-center">
+              <span className="text-[10px] text-slate-400 block font-semibold">LOSS</span>
+              <span className="text-xl font-black text-rose-400 font-mono-num">
+                {totalLosses}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Card Destaque de Próximo Sinal Ativo */}
+        {/* Destaque Próximo Sinal Ativo */}
         {proximoSinalAtivo && (
-          <div className="mt-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-slate-950 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="mt-4 p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-purple-950/30 to-slate-950 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-md">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 animate-pulse">
                 <Hourglass className="w-5 h-5" />
@@ -126,7 +143,7 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
                 <span className="text-[10px] font-extrabold uppercase text-amber-300 block">
                   PRÓXIMO SINAL ATIVO PROGRAMADO
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-white font-bold">
                     Gatilho: {proximoSinalAtivo.gatilhoMult.toFixed(2)}x ({proximoSinalAtivo.gatilhoTimeStr})
                   </span>
@@ -140,9 +157,7 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
             <div className="text-right sm:text-right">
               <span className="text-[10px] text-slate-400 block">Tempo Restante:</span>
               <span className="text-base font-black text-amber-300 font-mono-num">
-                {proximoSinalAtivo.tempoRestanteSeg !== undefined && proximoSinalAtivo.tempoRestanteSeg > 0
-                  ? `${Math.floor(proximoSinalAtivo.tempoRestanteSeg / 60)}m ${proximoSinalAtivo.tempoRestanteSeg % 60}s`
-                  : 'HORÁRIO DO TIRO ATIVO!'}
+                {formatCountdown(proximoSinalAtivo.tempoProjetadoMs, nowMs)}
               </span>
             </div>
           </div>
@@ -250,43 +265,40 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
                   <strong className="text-emerald-400">{rank.greens}G</strong> /{' '}
                   <strong className="text-rose-400">{rank.losses}L</strong>
                 </span>
-                <span className="text-[10px] text-purple-300">
-                  ROI: {rank.roiEstimado > 0 ? `+${rank.roiEstimado}%` : `${rank.roiEstimado}%`}
-                </span>
+                <span className="text-[10px] text-slate-500">{rank.totalGatilhos} disparos</span>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Lista de Sinais Longos Gerados & Auditados */}
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Lista de Sinais de Longo Alcance */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-pink-400" />
-            Sinais de Longo Alcance Auditados ({sinaisFiltrados.length})
+            <Radio className="w-4 h-4 text-purple-400" />
+            Sinais Programados & Auditados (+45m a +120m)
           </h3>
 
           <div className="flex items-center gap-1.5 text-xs">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
             {(['todos', 'SINAL_ATIVO', 'GREEN', 'LOSS'] as const).map((st) => (
               <button
                 key={st}
                 type="button"
                 onClick={() => setFiltroStatus(st)}
-                className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer text-[11px] ${
+                className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer text-xs ${
                   filtroStatus === st
                     ? 'bg-purple-600 text-white'
-                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
                 }`}
               >
                 {st === 'todos'
                   ? 'Todos'
                   : st === 'SINAL_ATIVO'
-                  ? `Ativos (${totalAtivos})`
+                  ? 'Ativos'
                   : st === 'GREEN'
-                  ? `Green (${totalGreens})`
-                  : `Loss (${totalLosses})`}
+                  ? 'Greens'
+                  : 'Losses'}
               </button>
             ))}
           </div>
@@ -297,123 +309,150 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
             Nenhum sinal encontrado para o filtro selecionado com gatilhos de {estrategiaObj.nome}.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sinaisFiltrados.map((sinal) => {
               const isGreen = sinal.status === 'GREEN';
               const isLoss = sinal.status === 'LOSS';
-              const isAtivo = sinal.status === 'SINAL_ATIVO';
+              const isAguardando = nowMs < sinal.janelaEntrarMs;
+              const isJanelaAberta = nowMs >= sinal.janelaEntrarMs && nowMs <= sinal.janelaPararMs;
 
               return (
                 <div
                   key={sinal.id}
-                  className={`p-3.5 rounded-xl border text-xs flex flex-col justify-between gap-3 transition-all ${
+                  className={`rounded-2xl border flex flex-col justify-between overflow-hidden transition-all shadow-lg ${
                     isGreen
-                      ? 'bg-slate-950/90 border-emerald-500/40 shadow-sm shadow-emerald-950/20'
+                      ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-emerald-500/60 shadow-emerald-950/20'
+                      : isJanelaAberta
+                      ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-cyan-500/60 shadow-cyan-950/20 ring-1 ring-cyan-500/40'
                       : isLoss
-                      ? 'bg-slate-950/90 border-rose-500/30'
-                      : 'bg-gradient-to-b from-amber-950/20 to-slate-950 border-amber-500/40 shadow-sm shadow-amber-950/10'
+                      ? 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-rose-500/40'
+                      : 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-slate-800'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-white">
-                        +{sinal.minutoOffset} min
-                      </span>
-                      <span className="font-mono-num text-slate-400 text-[11px]">
-                        Previsto: <strong className="text-slate-200">{sinal.tempoProjetadoStr}</strong>
-                      </span>
-                    </div>
-
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase flex items-center gap-1 ${
-                        isGreen
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : isLoss
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                      }`}
-                    >
-                      {isGreen ? (
-                        <>
-                          <CheckCircle2 className="w-3 h-3" />
-                          GREEN (Tiro {sinal.tiroGreen})
-                        </>
-                      ) : isLoss ? (
-                        <>
-                          <XCircle className="w-3 h-3" />
-                          LOSS
-                        </>
-                      ) : (
-                        <>
-                          <Radio className="w-3 h-3 text-amber-400" />
-                          SINAL ATIVO
-                        </>
-                      )}
+                  {/* Topo do Card */}
+                  <div className="p-3 border-b border-slate-800/80 bg-slate-950/60 flex items-center justify-between">
+                    <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-purple-400" />
+                      {houseName.toUpperCase()} • SINAL +{sinal.minutoOffset}m
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono-num">
+                      ±{toleranciaMin}m tol.
                     </span>
                   </div>
 
-                  {/* Detalhes do Gatilho */}
-                  <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800/80 text-[11px] flex items-center justify-between">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Vela Gatilho:</span>
-                      <span className="text-pink-400 font-extrabold font-mono-num">
-                        {sinal.gatilhoMult.toFixed(2)}x
+                  {/* Relógio Central com Ícone */}
+                  <div className="p-4 text-center border-b border-slate-800/60 bg-slate-950/40">
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      <Clock className="w-5 h-5 text-purple-400 animate-pulse" />
+                      <span className="text-2xl sm:text-3xl font-black font-mono-num text-purple-300 tracking-wider">
+                        {sinal.tempoProjetadoStr}
                       </span>
                     </div>
-                    <div className="text-right">
-                      <span className="text-slate-400 block text-[10px]">Horário Gatilho:</span>
-                      <span className="text-slate-200 font-mono-num">{sinal.gatilhoTimeStr}</span>
+
+                    <div className="text-[10px] text-slate-300 font-mono-num flex items-center justify-center gap-1.5 bg-slate-900/90 py-1 px-2 rounded-lg border border-slate-800 mt-2">
+                      <span>Entrar: <strong className="text-emerald-400">{sinal.janelaEntrarStr}</strong></span>
+                      <span>•</span>
+                      <span>Parar: <strong className="text-rose-400">{sinal.janelaPararStr}</strong></span>
                     </div>
                   </div>
 
-                  {/* Tiros ou Contagem Regressiva */}
-                  <div>
-                    {isAtivo ? (
-                      <div className="flex items-center justify-between text-[11px] text-amber-300 font-mono-num bg-amber-500/10 px-2 py-1.5 rounded-lg border border-amber-500/20">
-                        <span>Aguardando execução...</span>
-                        <strong className="font-extrabold">
-                          {sinal.tempoRestanteSeg !== undefined && sinal.tempoRestanteSeg > 0
-                            ? `Faltam ${Math.floor(sinal.tempoRestanteSeg / 60)}m ${sinal.tempoRestanteSeg % 60}s`
-                            : 'Momento do Tiro!'}
-                        </strong>
+                  {/* Faixa de Status / Contagem Regressiva */}
+                  <div className="px-3 py-2 bg-slate-950 border-b border-slate-800/80">
+                    {isGreen ? (
+                      <div className="py-1 px-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-black text-xs text-center flex items-center justify-center gap-1.5 shadow-sm">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>BATEU ({sinal.velaGreen?.result.toFixed(2)}x)</span>
+                      </div>
+                    ) : isJanelaAberta ? (
+                      <div className="py-1 px-2.5 rounded-lg bg-cyan-500/20 border border-cyan-500/60 text-cyan-300 font-black text-xs text-center flex items-center justify-center gap-1.5 animate-pulse">
+                        <Play className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Janela Aberta ({formatCountdown(sinal.janelaPararMs, nowMs)} restantes)</span>
+                      </div>
+                    ) : isAguardando ? (
+                      <div className="py-1 px-2.5 rounded-lg bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-bold text-xs text-center flex items-center justify-center gap-1.5 font-mono-num">
+                        <Hourglass className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Inicia em: {formatCountdown(sinal.janelaEntrarMs, nowMs)}</span>
                       </div>
                     ) : (
-                      <div>
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
-                          <span>Velas Auditadas na Janela ({sinal.tiros.length}):</span>
-                          {isGreen && sinal.velaGreen && (
-                            <span className="text-emerald-400 font-bold font-mono-num">
-                              Paga: {sinal.velaGreen.result.toFixed(2)}x
-                            </span>
-                          )}
-                        </div>
-                        {sinal.tiros.length > 0 ? (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {sinal.tiros.map((tiro, idx) => {
-                              const hit = tiro.result >= alvoMult;
-                              return (
-                                <span
-                                  key={tiro.uuid || idx}
-                                  onClick={() => onSelectRound?.(tiro)}
-                                  className={`px-2 py-1 rounded-lg font-mono-num text-[11px] cursor-pointer font-bold transition-transform hover:scale-105 ${
-                                    hit
-                                      ? 'bg-pink-500 text-white shadow-md shadow-pink-500/30 ring-1 ring-white/50'
-                                      : 'bg-slate-800/90 text-slate-300 border border-slate-700/50 hover:bg-slate-700'
-                                  }`}
-                                  title={`Tiro ${idx + 1}: ${tiro.result.toFixed(2)}x (${formatBrTime(tiro.instant)}) - Clique para detalhar`}
-                                >
-                                  {tiro.result.toFixed(2)}x
-                                </span>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 italic block py-0.5">
-                            Sem velas registradas na janela deste sinal.
+                      <div className="py-1 px-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 font-bold text-[11px] text-center flex items-center justify-center gap-1">
+                        <span>Encerrada às {sinal.janelaPararStr}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Informações da Vela Gatilho e Seca Pré-Gatilho */}
+                  <div className="p-3 border-b border-slate-800/60 bg-slate-950/30 text-[11px] space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400 font-semibold flex items-center gap-1">
+                        🎯 Vela Gatilho:
+                      </span>
+                      <strong className="text-pink-400 font-mono-num text-xs">
+                        {sinal.gatilhoMult.toFixed(2)}x às {sinal.gatilhoTimeStr}
+                      </strong>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono-num bg-slate-900/60 p-1.5 rounded-lg border border-slate-800">
+                      <span>Seca Pré-Gatilho:</span>
+                      <strong className="text-amber-300">
+                        {sinal.secaRodadas} rodadas ({sinal.secaMinutos} min)
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Velas na Janela */}
+                  <div className="p-3 bg-slate-950/80 flex-1 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-2">
+                        <span>VELAS NA JANELA ({sinal.velasNaJanela.length}):</span>
+                        {isGreen && (
+                          <span className="text-emerald-400 font-extrabold text-[10px]">
+                            ✔ BATEU
                           </span>
                         )}
                       </div>
-                    )}
+
+                      {sinal.velasNaJanela.length > 0 ? (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-36 overflow-y-auto pr-0.5 scrollbar-thin">
+                          {sinal.velasNaJanela.map((vela, vIdx) => {
+                            const isRosa = vela.result >= alvoMult;
+                            const isRoxa = vela.result >= 2.0 && vela.result < 10.0;
+                            const horaStr = vela.instant
+                              ? formatBrTime(vela.instant).slice(0, 5)
+                              : '--:--';
+
+                            return (
+                              <div
+                                key={vela.uuid || vIdx}
+                                onClick={() => onSelectRound?.(vela)}
+                                className={`p-1 rounded-lg text-center font-mono-num cursor-pointer transition-transform hover:scale-105 ${
+                                  isRosa
+                                    ? 'bg-pink-600/90 text-white font-black shadow-md shadow-pink-600/30 border border-pink-400 ring-1 ring-white/50'
+                                    : isRoxa
+                                    ? 'bg-purple-900/80 text-purple-200 font-bold border border-purple-600/50'
+                                    : 'bg-slate-900 text-cyan-300 font-semibold border border-slate-800'
+                                }`}
+                                title={`${vela.result.toFixed(2)}x às ${formatBrTime(vela.instant)}`}
+                              >
+                                <div className="text-[11px] leading-tight">
+                                  {vela.result.toFixed(2)}x
+                                </div>
+                                <div className="text-[9px] opacity-75 text-slate-300 leading-none mt-0.5">
+                                  {horaStr}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : isAguardando ? (
+                        <div className="py-4 text-center text-slate-500 italic text-xs">
+                          Aguardando início da janela ({sinal.janelaEntrarStr})...
+                        </div>
+                      ) : (
+                        <div className="py-4 text-center text-slate-500 italic text-xs">
+                          Sem velas registradas nesta janela.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

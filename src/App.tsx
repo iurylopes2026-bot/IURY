@@ -276,11 +276,19 @@ export default function App() {
             )}
 
             {activeTab === 'projecao_rapida' && (
-              <ProjecaoRapidaView rounds={rounds} onSelectRound={setSelectedRound} />
+              <ProjecaoRapidaView
+                rounds={rounds}
+                onSelectRound={setSelectedRound}
+                houseName={activeHouse?.name || 'TORRE BET'}
+              />
             )}
 
             {activeTab === 'projecao_longa' && (
-              <ProjecaoLongaView rounds={rounds} onSelectRound={setSelectedRound} />
+              <ProjecaoLongaView
+                rounds={rounds}
+                onSelectRound={setSelectedRound}
+                houseName={activeHouse?.name || 'TORRE BET'}
+              />
             )}
 
             {activeTab === 'velas_invertidas' && (

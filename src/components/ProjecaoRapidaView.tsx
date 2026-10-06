@@ -5,6 +5,7 @@ import {
   CicloProjecaoRapida,
   EntradaRapida,
   formatBrTime,
+  FAIXAS_SECA_DISPONIVEIS,
 } from '../utils/analysisEngine';
 import {
   Zap,
@@ -43,10 +44,11 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
   onSelectRound,
   houseName = 'TORRE BET',
 }) => {
-  // Configuração dos 4 Intervalos
+  // Configuração dos 4 Intervalos e Casa de Vela (Seca)
+  const [faixaSecaAlvo, setFaixaSecaAlvo] = useState<number>(30);
   const [intervalos, setIntervalos] = useState<number[]>([10, 20, 30, 40]);
   const [protecaoX, setProtecaoX] = useState<number>(2.0);
-  const [alvoY, setAlvoY] = useState<number>(10.0);
+  const [alvoY, setAlvoY] = useState<number>(30.0);
 
   // Relógio em tempo real para contagem regressiva a cada 1 segundo
   const [nowMs, setNowMs] = useState<number>(Date.now());
@@ -58,8 +60,8 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
   }, []);
 
   const { ciclos, ranking, top4Recomendados, taxaGeralAcerto } = useMemo(() => {
-    return processarProjecaoRapida(rounds, intervalos, protecaoX, alvoY);
-  }, [rounds, intervalos, protecaoX, alvoY]);
+    return processarProjecaoRapida(rounds, intervalos, protecaoX, alvoY, faixaSecaAlvo);
+  }, [rounds, intervalos, protecaoX, alvoY, faixaSecaAlvo]);
 
   const aplicarTop4 = () => {
     setIntervalos(top4Recomendados);
@@ -86,17 +88,17 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
             <div className="flex items-center gap-2 mb-1.5">
               <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
                 <Zap className="w-3 h-3 text-indigo-400" />
-                SISTEMA AUTOMÁTICO
+                SISTEMA AUTOMÁTICO DE SECA RECORDISTA
               </span>
               <span className="text-xs text-slate-400">
-                Pós-Rompimento de Maior Seca / Quebra de Máxima (T0)
+                Pós-Quebra da Maior Seca do Dia ({faixaSecaAlvo}x)
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black font-display text-white">
               Projeção Rápida: 4 Entradas (T0 +10m a +40m)
             </h2>
             <p className="text-xs text-slate-400 max-w-2xl mt-1">
-              Rastreia períodos de seca (ausência de velas rosas), monitora a base de teto pré-quebra e dispara as 4 janelas temporais com contagem regressiva ao vivo e tolerância de ±2 min.
+              Rastreia onde a casa ficou o maior número de rodadas sem soltar vela de <strong className="text-pink-400">{faixaSecaAlvo}x</strong> (ausência recorde). Quando essa seca é quebrada, dispara 4 janelas de 10 em 10 minutos (+10m, +20m, +30m, +40m) com contagem regressiva ao vivo buscando a mesma vela de <strong className="text-pink-400">{faixaSecaAlvo}x</strong>!
             </p>
           </div>
 
@@ -123,8 +125,36 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
           </div>
         </div>
 
+        {/* SELETOR PROEMINENTE DE CASA DE VELA / FAIXA DA SECA */}
+        <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 mr-1">
+            <Target className="w-3.5 h-3.5 text-pink-400" />
+            CASA DE VELA (SECA DO DIA):
+          </span>
+          {FAIXAS_SECA_DISPONIVEIS.map((faixa) => {
+            const isSel = faixa === faixaSecaAlvo;
+            return (
+              <button
+                key={faixa}
+                type="button"
+                onClick={() => {
+                  setFaixaSecaAlvo(faixa);
+                  setAlvoY(faixa);
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer font-mono-num ${
+                  isSel
+                    ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-md shadow-pink-600/30 ring-1 ring-white/50 scale-105'
+                    : 'bg-slate-950/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                {faixa}x
+              </button>
+            );
+          })}
+        </div>
+
         {/* Barra de Ajuste de Alvos e Intervalos */}
-        <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl">
               <Shield className="w-3.5 h-3.5 text-purple-400" />
@@ -145,18 +175,16 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
             <div className="flex items-center gap-2 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl">
               <Target className="w-3.5 h-3.5 text-pink-400" />
               <label htmlFor="alvo-y-input" className="text-slate-400 text-[11px]">2ª Mão (Alvo):</label>
-              <select
+              <input
                 id="alvo-y-input"
+                type="number"
+                step="1"
+                min="2"
                 value={alvoY}
                 onChange={(e) => setAlvoY(Number(e.target.value))}
-                className="bg-transparent text-pink-300 font-bold focus:outline-none cursor-pointer"
-              >
-                <option value={5.0} className="bg-slate-900">5.00x</option>
-                <option value={10.0} className="bg-slate-900">10.00x (Padrão)</option>
-                <option value={15.0} className="bg-slate-900">15.00x</option>
-                <option value={20.0} className="bg-slate-900">20.00x</option>
-                <option value={30.0} className="bg-slate-900">30.00x</option>
-              </select>
+                className="bg-transparent text-pink-300 font-bold focus:outline-none cursor-pointer w-16 font-mono-num text-right"
+              />
+              <span className="text-slate-400 text-xs">x</span>
             </div>
 
             <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-mono-num">
@@ -251,18 +279,18 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
 
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-slate-300">
-                            QUEBRA DE MÁXIMA:
+                          <span className="text-xs font-extrabold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                            QUEBRA DA MAIOR SECA ({ciclo.faixaAlvo || faixaSecaAlvo}x):
                           </span>
                           <span className="text-xl font-black text-pink-400 font-mono-num">
-                            {ciclo.maxima.toFixed(2)}x
+                            {quebra.multFimSeca.toFixed(2)}x
                           </span>
                           <span className="text-xs text-slate-400 font-mono-num">
                             às {ciclo.horarioQuebra}
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-400">
-                          Superou teto anterior de {quebra.maxAnterior.toFixed(2)}x
+                          Rompeu após <strong className="text-amber-300">{quebra.secaRodadas} rodadas na seca</strong> (Superou recorde anterior de {quebra.maiorSecaAnteriorRodadas} rodadas)
                         </span>
                       </div>
                     </div>

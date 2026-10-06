@@ -76,6 +76,7 @@ export interface QuebraMaximaItem {
   timeStr: string;
   maxAnterior: number;
   novoMax: number;
+  faixaAlvo: number;
   // Dados da Seca (Ausência de Vela Rosa)
   secaRodadas: number;
   secaMinutos: number;
@@ -114,221 +115,159 @@ export interface CasaDeRosaItem {
   superouTetoRosa: boolean;
 }
 
-export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[] {
-  if (!rounds || rounds.length === 0) return [];
+export const FAIXAS_SECA_DISPONIVEIS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
-  // Ordenar cronologicamente do mais antigo para o mais recente (00:00:01 -> agora)
+export function analisarQuebrasDeSecaPorFaixa(
+  rounds: CrashRound[],
+  faixaAlvo = 30
+): QuebraMaximaItem[] {
+  if (!rounds || rounds.length === 0) return [];
   const sorted = [...rounds].sort((a, b) => getRoundTime(a) - getRoundTime(b));
 
   const quebras: QuebraMaximaItem[] = [];
-  let maxAtual = 0;
-  let recordeSecaDoDia = 0;
+  let recordeSecaRodadas = 0;
+  let ultimaVelaFaixaIdx = -1;
 
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
-    const rTime = getRoundTime(r);
-
-    if (r.result > maxAtual) {
-      const maxAnterior = maxAtual;
-      maxAtual = r.result;
-
-      // 1. Cálculo da Seca (Ausência de vela rosa antes deste rompimento)
-      let ultimaRosaIdx = -1;
-      for (let k = i - 1; k >= 0; k--) {
-        if (sorted[k].result >= 10.0) {
-          ultimaRosaIdx = k;
-          break;
-        }
-      }
+    if (r.result >= faixaAlvo) {
+      const rTime = getRoundTime(r);
 
       let secaRodadas = 0;
-      let secaInicioTimeMs = rTime;
-      let secaInicioTimeStr = formatBrTime(r.instant);
-      let multInicioSeca = 0;
-      let horarioInicioSeca = '--:--:--';
+      let inicioTimeMs = rTime;
+      let horarioInicioSeca = formatBrTime(r.instant);
+      let multInicioSeca = r.result;
       let velaInicioSeca: CrashRound | undefined = undefined;
 
-      if (ultimaRosaIdx >= 0) {
-        velaInicioSeca = sorted[ultimaRosaIdx];
-        multInicioSeca = sorted[ultimaRosaIdx].result;
-        horarioInicioSeca = formatBrTime(sorted[ultimaRosaIdx].instant);
-        secaRodadas = i - ultimaRosaIdx - 1;
-        secaInicioTimeMs = getRoundTime(sorted[ultimaRosaIdx]);
-        secaInicioTimeStr = horarioInicioSeca;
+      if (ultimaVelaFaixaIdx >= 0) {
+        velaInicioSeca = sorted[ultimaVelaFaixaIdx];
+        secaRodadas = i - ultimaVelaFaixaIdx - 1;
+        inicioTimeMs = getRoundTime(sorted[ultimaVelaFaixaIdx]);
+        horarioInicioSeca = formatBrTime(sorted[ultimaVelaFaixaIdx].instant);
+        multInicioSeca = sorted[ultimaVelaFaixaIdx].result;
       } else {
+        // Primeira ocorrência da faixa desde o início do dia
+        velaInicioSeca = sorted[0];
         secaRodadas = i;
-        if (sorted.length > 0) {
-          velaInicioSeca = sorted[0];
-          multInicioSeca = sorted[0].result;
-          horarioInicioSeca = formatBrTime(sorted[0].instant);
-          secaInicioTimeMs = getRoundTime(sorted[0]);
-        }
-        secaInicioTimeStr = horarioInicioSeca;
+        inicioTimeMs = sorted[0] ? getRoundTime(sorted[0]) : rTime;
+        horarioInicioSeca = sorted[0] ? formatBrTime(sorted[0].instant) : '00:00:01';
+        multInicioSeca = sorted[0]?.result || 0;
       }
 
-      const velaFimSeca = r;
-      const multFimSeca = r.result;
-      const horarioFimSeca = formatBrTime(r.instant);
-      const secaFimTimeMs = rTime;
-      const secaFimTimeStr = horarioFimSeca;
-      const secaMinutos = Math.max(1, Math.round(Math.abs(secaFimTimeMs - secaInicioTimeMs) / 60000));
+      // Se superou a maior seca anterior do dia para esta faixa
+      if (secaRodadas > recordeSecaRodadas) {
+        const maiorSecaAnterior = recordeSecaRodadas;
+        recordeSecaRodadas = secaRodadas;
 
-      const isMaiorSecaDoDia = secaRodadas > recordeSecaDoDia;
-      const maiorSecaAnteriorRodadas = recordeSecaDoDia;
-      if (isMaiorSecaDoDia) {
-        recordeSecaDoDia = secaRodadas;
-      }
+        const fimTimeMs = rTime;
+        const horarioFimSeca = formatBrTime(r.instant);
+        const secaMinutos = Math.max(1, Math.round(Math.abs(fimTimeMs - inicioTimeMs) / 60000));
 
-      // 2. Teto de Roxa (4.00x a 9.99x) até 5 minutos antes da quebra
-      const cincoMinAntes = rTime - 5 * 60 * 1000;
-      const roxas5m = sorted.slice(0, i).filter((v) => {
-        const vt = getRoundTime(v);
-        return vt >= cincoMinAntes && vt <= rTime && v.result >= 4.0 && v.result < 10.0;
-      });
+        // 1. Teto de Roxa (4.00x a 9.99x) até 5 minutos antes da quebra
+        const cincoMinAntes = rTime - 5 * 60 * 1000;
+        const roxas5m = sorted.slice(0, i).filter((v) => {
+          const vt = getRoundTime(v);
+          return vt >= cincoMinAntes && vt <= rTime && v.result >= 4.0 && v.result < 10.0;
+        });
 
-      let valorProtecaoRoxa = 0;
-      let horarioProtecaoRoxa: string | undefined = undefined;
-
-      if (roxas5m.length > 0) {
-        let bestRoxa = roxas5m[0];
-        for (const rx of roxas5m) {
-          if (rx.result > bestRoxa.result) bestRoxa = rx;
-        }
-        valorProtecaoRoxa = bestRoxa.result;
-        horarioProtecaoRoxa = formatBrTime(bestRoxa.instant);
-      } else {
-        // Fallback: última roxa anterior mais próxima
-        for (let k = i - 1; k >= 0; k--) {
-          if (sorted[k].result >= 4.0 && sorted[k].result < 10.0) {
-            valorProtecaoRoxa = sorted[k].result;
-            horarioProtecaoRoxa = formatBrTime(sorted[k].instant);
-            break;
+        let valorProtecaoRoxa = 0;
+        let horarioProtecaoRoxa: string | undefined = undefined;
+        if (roxas5m.length > 0) {
+          let best = roxas5m[0];
+          for (const rx of roxas5m) if (rx.result > best.result) best = rx;
+          valorProtecaoRoxa = best.result;
+          horarioProtecaoRoxa = formatBrTime(best.instant);
+        } else {
+          for (let k = i - 1; k >= 0; k--) {
+            if (sorted[k].result >= 4.0 && sorted[k].result < 10.0) {
+              valorProtecaoRoxa = sorted[k].result;
+              horarioProtecaoRoxa = formatBrTime(sorted[k].instant);
+              break;
+            }
           }
         }
-      }
 
-      // 3. Teto de Rosa (>= 10.00x) até 10 minutos antes do fim da seca
-      const dezMinAntesFim = rTime - 10 * 60 * 1000;
-      const velasPre10m = sorted.slice(0, i).filter((v) => {
-        const vt = getRoundTime(v);
-        return vt >= dezMinAntesFim && vt <= rTime;
-      });
+        // 2. Rosas nos 10m anteriores ao fim da seca
+        const dezMinAntesFim = rTime - 10 * 60 * 1000;
+        const rosasPre10m = sorted.slice(0, i).filter((v) => {
+          const vt = getRoundTime(v);
+          return vt >= dezMinAntesFim && vt <= rTime && v.result >= 10.0;
+        });
+        const rosas10m: RosaItemPre[] = rosasPre10m.map((v) => ({
+          mult: v.result,
+          timeStr: formatBrTime(v.instant),
+        }));
 
-      const rosasPre10m = velasPre10m.filter((v) => v.result >= 10.0);
-      const rosas10m: RosaItemPre[] = rosasPre10m.map((v) => ({
-        mult: v.result,
-        timeStr: formatBrTime(v.instant),
-      }));
+        // 3. Rosas nos 10m anteriores ao início da seca
+        const dezMinAntesInicio = inicioTimeMs - 10 * 60 * 1000;
+        const rosasInicio10m: RosaItemPre[] = sorted.filter((v) => {
+          const vt = getRoundTime(v);
+          return vt >= dezMinAntesInicio && vt <= inicioTimeMs && v.result >= 10.0;
+        }).map((v) => ({
+          mult: v.result,
+          timeStr: formatBrTime(v.instant),
+        }));
 
-      // Rosas no início da seca (até 10m antes da vela que iniciou a seca)
-      const dezMinAntesInicio = secaInicioTimeMs - 10 * 60 * 1000;
-      const rosasInicio10m: RosaItemPre[] = sorted.filter((v) => {
-        const vt = getRoundTime(v);
-        return vt >= dezMinAntesInicio && vt <= secaInicioTimeMs && v.result >= 10.0;
-      }).map((v) => ({
-        mult: v.result,
-        timeStr: formatBrTime(v.instant),
-      }));
+        let valorTetoRosa = 0;
+        let horarioTetoRosa: string | undefined = undefined;
+        let veioDe10mRosa = false;
 
-      let valorTetoRosa = 0;
-      let horarioTetoRosa: string | undefined = undefined;
-      let veioDe10mRosa = false;
-
-      if (rosasPre10m.length > 0) {
-        let bestRosa = rosasPre10m[0];
-        for (const rs of rosasPre10m) {
-          if (rs.result > bestRosa.result) bestRosa = rs;
-        }
-        valorTetoRosa = bestRosa.result;
-        horarioTetoRosa = formatBrTime(bestRosa.instant);
-        veioDe10mRosa = true;
-      } else if (rosasInicio10m.length > 0) {
-        let bestRosa = rosasInicio10m[0];
-        for (const rs of rosasInicio10m) {
-          if (rs.mult > bestRosa.mult) bestRosa = rs;
-        }
-        valorTetoRosa = bestRosa.mult;
-        horarioTetoRosa = bestRosa.timeStr;
-        veioDe10mRosa = false;
-      } else {
-        // Fallback: última rosa anterior no histórico
-        if (ultimaRosaIdx >= 0) {
-          valorTetoRosa = sorted[ultimaRosaIdx].result;
-          horarioTetoRosa = formatBrTime(sorted[ultimaRosaIdx].instant);
+        if (rosasPre10m.length > 0) {
+          let best = rosasPre10m[0];
+          for (const rs of rosasPre10m) if (rs.result > best.result) best = rs;
+          valorTetoRosa = best.result;
+          horarioTetoRosa = formatBrTime(best.instant);
+          veioDe10mRosa = true;
+        } else if (multInicioSeca >= 10.0) {
+          valorTetoRosa = multInicioSeca;
+          horarioTetoRosa = horarioInicioSeca;
           veioDe10mRosa = false;
         }
+
+        quebras.push({
+          id: r.uuid || `quebra-${faixaAlvo}-${i}`,
+          round: r,
+          timestamp: rTime,
+          timeStr: horarioFimSeca,
+          maxAnterior: maiorSecaAnterior,
+          novoMax: r.result,
+          faixaAlvo,
+          secaRodadas,
+          secaMinutos,
+          secaInicioTimeMs: inicioTimeMs,
+          secaInicioTimeStr: horarioInicioSeca,
+          secaFimTimeMs: fimTimeMs,
+          secaFimTimeStr: horarioFimSeca,
+          multInicioSeca,
+          horarioInicioSeca,
+          velaInicioSeca,
+          multFimSeca: r.result,
+          horarioFimSeca,
+          velaFimSeca: r,
+          isMaiorSecaDoDia: true,
+          maiorSecaAnteriorRodadas: maiorSecaAnterior,
+          valorTetoRosa: valorTetoRosa || 10.0,
+          horarioTetoRosa,
+          veioDe10mRosa,
+          rosas10m,
+          rosasInicio10m,
+          valorProtecaoRoxa: valorProtecaoRoxa || 4.0,
+          horarioProtecaoRoxa,
+          tetoAltoBatido: false,
+          protecaoAtingida: false,
+          casasDeRosa: [],
+        });
       }
 
-      // 4. Casas de Rosa Pós-Máxima
-      const casasDeRosa: CasaDeRosaItem[] = [];
-      let tirosContados = 0;
-      let casaNum = 1;
-
-      for (let j = i + 1; j < sorted.length; j++) {
-        const postRound = sorted[j];
-        if (postRound.result >= 10.0) {
-          casasDeRosa.push({
-            numeroCasa: casaNum++,
-            round: postRound,
-            multiplier: postRound.result,
-            timeStr: formatBrTime(postRound.instant),
-            distanciaTiros: tirosContados,
-            superouTetoRosa: valorTetoRosa > 0 ? postRound.result >= valorTetoRosa : false,
-          });
-          tirosContados = 0;
-        } else {
-          tirosContados++;
-        }
-      }
-
-      const tetoAltoBatido =
-        valorTetoRosa > 0
-          ? r.result >= valorTetoRosa || casasDeRosa.some((c) => c.superouTetoRosa)
-          : false;
-
-      const protecaoAtingida =
-        valorProtecaoRoxa > 0
-          ? r.result >= valorProtecaoRoxa ||
-            sorted.slice(i + 1).some((v) => v.result >= valorProtecaoRoxa)
-          : false;
-
-      quebras.push({
-        id: r.uuid || `quebra-${i}`,
-        round: r,
-        timestamp: rTime,
-        timeStr: formatBrTime(r.instant),
-        maxAnterior,
-        novoMax: r.result,
-        secaRodadas,
-        secaMinutos,
-        secaInicioTimeMs,
-        secaInicioTimeStr,
-        secaFimTimeMs,
-        secaFimTimeStr,
-        multInicioSeca,
-        horarioInicioSeca,
-        velaInicioSeca,
-        multFimSeca,
-        horarioFimSeca,
-        velaFimSeca,
-        isMaiorSecaDoDia,
-        maiorSecaAnteriorRodadas,
-        valorTetoRosa: valorTetoRosa || 10.0,
-        horarioTetoRosa,
-        veioDe10mRosa,
-        rosas10m,
-        rosasInicio10m,
-        valorProtecaoRoxa: valorProtecaoRoxa || 4.0,
-        horarioProtecaoRoxa,
-        tetoAltoBatido,
-        protecaoAtingida,
-        casasDeRosa,
-      });
+      ultimaVelaFaixaIdx = i;
     }
   }
 
-  // Retornar da quebra mais recente para a mais antiga para exibição prioritária
   return quebras.reverse();
+}
+
+export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[] {
+  return analisarQuebrasDeSecaPorFaixa(rounds, 30);
 }
 
 /* ==========================================================================
@@ -362,11 +301,15 @@ export interface CicloProjecaoRapida {
   timestampQuebra: number;
   horarioQuebra: string;
   maxima: number;
+  faixaAlvo: number;
   entradas: EntradaRapida[];
   statusCiclo: 'GREEN' | 'LOSS' | 'EM_ANDAMENTO';
   totalGreens: number;
   totalLosses: number;
 }
+
+export type CicloProjecaoLonga = CicloProjecaoRapida;
+export type EntradaLonga = EntradaRapida;
 
 export interface RankingIntervaloItem {
   minuto: number; // 1 a 60
@@ -376,11 +319,13 @@ export interface RankingIntervaloItem {
   assertividade: number; // % (0-100)
 }
 
-export function processarProjecaoRapida(
+export function processarProjecaoCiclosSeca(
   rounds: CrashRound[],
-  intervalosCustom = [10, 20, 30, 40],
+  intervalosCustom: number[] = [10, 20, 30, 40],
   protecaoX = 2.0,
-  alvoY = 10.0
+  alvoY = 30.0,
+  faixaSecaAlvo = 30,
+  toleranciaMin = 2
 ): {
   ciclos: CicloProjecaoRapida[];
   ranking: RankingIntervaloItem[];
@@ -388,11 +333,12 @@ export function processarProjecaoRapida(
   taxaGeralAcerto: number;
 } {
   if (!rounds || rounds.length === 0) {
-    return { ciclos: [], ranking: [], top4Recomendados: [10, 20, 30, 40], taxaGeralAcerto: 0 };
+    return { ciclos: [], ranking: [], top4Recomendados: intervalosCustom, taxaGeralAcerto: 0 };
   }
 
   const sorted = [...rounds].sort((a, b) => getRoundTime(a) - getRoundTime(b));
-  const quebras = analisarQuebrasDeMaxima(rounds); // Já vem ordenado mais recente primeiro
+  // Localiza quebras da maior seca do dia para a faixa especificada
+  const quebras = analisarQuebrasDeSecaPorFaixa(rounds, faixaSecaAlvo);
 
   const latestRoundTime = sorted.length > 0 ? getRoundTime(sorted[sorted.length - 1]) : 0;
   const effectiveNowMs = Math.max(Date.now(), latestRoundTime);
@@ -409,9 +355,9 @@ export function processarProjecaoRapida(
       const targetMinStartMs = Math.floor(tempoAlvoMs / 60000) * 60000;
       const tempoAlvoStr = formatBrTime(new Date(tempoAlvoMs).toISOString());
 
-      const janelaEntrarMs = tempoAlvoMs - 2 * 60 * 1000;
+      const janelaEntrarMs = tempoAlvoMs - toleranciaMin * 60 * 1000;
       const janelaEntrarStr = formatBrTime(new Date(janelaEntrarMs).toISOString());
-      const janelaPararMs = tempoAlvoMs + 2 * 60 * 1000;
+      const janelaPararMs = tempoAlvoMs + toleranciaMin * 60 * 1000 + 59000;
       const janelaPararStr = formatBrTime(new Date(janelaPararMs).toISOString());
 
       // Coletar todas as velas na janela [janelaEntrarMs, janelaPararMs]
@@ -430,7 +376,7 @@ export function processarProjecaoRapida(
       let bateuProtecao = false;
       let tiroProtecao: number | undefined = undefined;
 
-      // Verifica se houve green em velasNaJanela ou nos tiros
+      // Verifica se houve green em velasNaJanela ou nos tiros (busca o alvo da faixa)
       const hitRosaNaJanela = velasNaJanela.find((v) => v.result >= alvoY);
       const hitProtecaoNaJanela = velasNaJanela.some((v) => v.result >= protecaoX);
       const maiorVelaNaJanela =
@@ -494,7 +440,7 @@ export function processarProjecaoRapida(
         janelaEntrarStr,
         janelaPararMs,
         janelaPararStr,
-        toleranciaMin: 2,
+        toleranciaMin,
         velasNaJanela,
         tiros,
         status,
@@ -507,7 +453,7 @@ export function processarProjecaoRapida(
       });
     }
 
-    // Assertividade do Ciclo (1 de 4): O ciclo completo é GREEN se ao menos 1 das 4 entradas pagar o alvo
+    // Assertividade do Ciclo: GREEN se ao menos 1 das 4 entradas pagou o alvo
     const hasGreen = entradas.some((e) => e.status === 'GREEN');
     const allLoss = entradas.every((e) => e.status === 'LOSS');
     const statusCiclo: 'GREEN' | 'LOSS' | 'EM_ANDAMENTO' = hasGreen
@@ -520,11 +466,12 @@ export function processarProjecaoRapida(
     const totalLosses = entradas.filter((e) => e.status === 'LOSS').length;
 
     ciclos.push({
-      id: q.id,
+      id: `ciclo-${faixaSecaAlvo}-${q.id}`,
       quebra: q,
       timestampQuebra: t0,
       horarioQuebra: q.timeStr,
       maxima: q.novoMax,
+      faixaAlvo: faixaSecaAlvo,
       entradas,
       statusCiclo,
       totalGreens,
@@ -532,9 +479,14 @@ export function processarProjecaoRapida(
     });
   }
 
-  // 4. Ranking dos Melhores Intervalos (1 a 60 minutos pós-quebra) com busca binária
+  // Ranking de Intervalos
+  const isLonga = (intervalosCustom[0] || 0) >= 45;
+  const minStart = isLonga ? 45 : 1;
+  const minEnd = isLonga ? 120 : 60;
+  const step = isLonga ? 5 : 1;
   const ranking: RankingIntervaloItem[] = [];
-  for (let m = 1; m <= 60; m++) {
+
+  for (let m = minStart; m <= minEnd; m += step) {
     let testados = 0;
     let acertos = 0;
 
@@ -563,14 +515,12 @@ export function processarProjecaoRapida(
     });
   }
 
-  // Ordenar ranking por assertividade desc, depois por greens desc
   ranking.sort((a, b) => {
     if (b.assertividade !== a.assertividade) return b.assertividade - a.assertividade;
     return b.greens - a.greens;
   });
 
   const top4Recomendados = ranking.slice(0, 4).map((r) => r.minuto);
-  // Ordena os 4 em ordem cronológica crescente para as 4 entradas
   top4Recomendados.sort((a, b) => a - b);
 
   const ciclosFinalizados = ciclos.filter((c) => c.statusCiclo !== 'EM_ANDAMENTO');
@@ -583,9 +533,32 @@ export function processarProjecaoRapida(
   return {
     ciclos,
     ranking,
-    top4Recomendados: top4Recomendados.length === 4 ? top4Recomendados : [10, 20, 30, 40],
+    top4Recomendados: top4Recomendados.length === 4 ? top4Recomendados : intervalosCustom,
     taxaGeralAcerto,
   };
+}
+
+export function processarProjecaoRapida(
+  rounds: CrashRound[],
+  intervalosCustom = [10, 20, 30, 40],
+  protecaoX = 2.0,
+  alvoY = 30.0,
+  faixaSecaAlvo = 30,
+  toleranciaMin = 2
+): {
+  ciclos: CicloProjecaoRapida[];
+  ranking: RankingIntervaloItem[];
+  top4Recomendados: number[];
+  taxaGeralAcerto: number;
+} {
+  return processarProjecaoCiclosSeca(
+    rounds,
+    intervalosCustom,
+    protecaoX,
+    alvoY,
+    faixaSecaAlvo,
+    toleranciaMin
+  );
 }
 
 /* ==========================================================================
@@ -648,206 +621,25 @@ export interface RankingTempoLongo {
 
 export function processarProjecaoLonga(
   rounds: CrashRound[],
-  minTrigger = 50,
-  alvoMult = 10.0,
-  toleranciaMin = 1,
-  intervalosLongos = [45, 60, 75, 90, 105, 120]
+  intervalosLongos = [60, 70, 80, 90],
+  protecaoX = 2.0,
+  alvoY = 30.0,
+  faixaSecaAlvo = 30,
+  toleranciaMin = 2
 ): {
-  sinais: SinalLongoItem[];
-  rankingTempos: RankingTempoLongo[];
-  proximoSinalAtivo?: SinalLongoItem;
-  taxaAcertoGeral: number;
+  ciclos: CicloProjecaoRapida[];
+  ranking: RankingIntervaloItem[];
+  top4Recomendados: number[];
+  taxaGeralAcerto: number;
 } {
-  if (!rounds || rounds.length === 0) {
-    return { sinais: [], rankingTempos: [], taxaAcertoGeral: 0 };
-  }
-
-  const sorted = [...rounds].sort((a, b) => getRoundTime(a) - getRoundTime(b));
-  const latestRoundTime = sorted.length > 0 ? getRoundTime(sorted[sorted.length - 1]) : 0;
-  const effectiveNowMs = Math.max(Date.now(), latestRoundTime);
-
-  // Filtrar rodadas gatilho
-  const gatilhos = sorted.filter((r) => r.result >= minTrigger);
-
-  const sinais: SinalLongoItem[] = [];
-
-  for (const g of gatilhos) {
-    const gTime = getRoundTime(g);
-    const gIdx = sorted.findIndex((r) => r.uuid === g.uuid);
-    let prevRosaIdx = -1;
-    if (gIdx > 0) {
-      for (let k = gIdx - 1; k >= 0; k--) {
-        if (sorted[k].result >= 10.0) {
-          prevRosaIdx = k;
-          break;
-        }
-      }
-    }
-    const secaRodadas = prevRosaIdx >= 0 ? gIdx - prevRosaIdx - 1 : Math.max(0, gIdx);
-    const secaInicioTimeMs =
-      prevRosaIdx >= 0
-        ? getRoundTime(sorted[prevRosaIdx])
-        : sorted.length > 0
-        ? getRoundTime(sorted[0])
-        : gTime;
-    const secaInicioTimeStr = formatBrTime(new Date(secaInicioTimeMs).toISOString());
-    const secaMinutos = Math.max(1, Math.round(Math.abs(gTime - secaInicioTimeMs) / 60000));
-
-    for (const offset of intervalosLongos) {
-      const tempoProjetadoMs = gTime + offset * 60 * 1000;
-      const tempoProjetadoStr = formatBrTime(new Date(tempoProjetadoMs).toISOString());
-
-      // Janela com tolerância
-      const inicioJanelaMs = tempoProjetadoMs - toleranciaMin * 60 * 1000;
-      const fimJanelaMs = tempoProjetadoMs + (toleranciaMin + 2) * 60 * 1000;
-      const janelaEntrarStr = formatBrTime(new Date(inicioJanelaMs).toISOString());
-      const janelaPararStr = formatBrTime(new Date(fimJanelaMs).toISOString());
-
-      const velasNaJanela = sorted.filter((v) => {
-        const vt = getRoundTime(v);
-        return vt >= inicioJanelaMs && vt <= fimJanelaMs;
-      });
-
-      const startIdx = findFirstIndexAtOrAfter(sorted, inicioJanelaMs);
-
-      let status: 'GREEN' | 'LOSS' | 'SINAL_ATIVO' = 'SINAL_ATIVO';
-      const tiros: CrashRound[] = [];
-      let velaGreen: CrashRound | undefined = undefined;
-      let tiroGreen: number | undefined = undefined;
-
-      if (startIdx !== -1 && getRoundTime(sorted[startIdx]) <= fimJanelaMs) {
-        // Coletar até 5 velas dentro da janela ou consecutivas
-        const slice = sorted.slice(startIdx, startIdx + 5);
-        for (let t = 0; t < slice.length; t++) {
-          const v = slice[t];
-          const vt = getRoundTime(v);
-          if (vt <= fimJanelaMs || tiros.length < 3) {
-            tiros.push(v);
-            if (v.result >= alvoMult) {
-              status = 'GREEN';
-              velaGreen = v;
-              tiroGreen = t + 1;
-              break;
-            }
-          }
-        }
-
-        if (status !== 'GREEN') {
-          if (effectiveNowMs > fimJanelaMs && tiros.length >= 3) {
-            status = 'LOSS';
-          } else if (effectiveNowMs > tempoProjetadoMs + 3 * 60 * 1000) {
-            status = 'LOSS';
-          } else {
-            status = 'SINAL_ATIVO';
-          }
-        }
-      } else {
-        if (effectiveNowMs > fimJanelaMs) {
-          status = 'LOSS';
-        } else {
-          status = 'SINAL_ATIVO';
-        }
-      }
-
-      const tempoRestanteSeg =
-        status === 'SINAL_ATIVO' ? Math.max(0, Math.floor((tempoProjetadoMs - effectiveNowMs) / 1000)) : undefined;
-
-      sinais.push({
-        id: `${g.uuid}-${offset}`,
-        gatilhoRound: g,
-        gatilhoMult: g.result,
-        gatilhoTimeMs: gTime,
-        gatilhoTimeStr: formatBrTime(g.instant),
-        minutoOffset: offset,
-        tempoProjetadoMs,
-        tempoProjetadoStr,
-        janelaEntrarMs: inicioJanelaMs,
-        janelaEntrarStr,
-        janelaPararMs: fimJanelaMs,
-        janelaPararStr,
-        toleranciaMin,
-        velasNaJanela,
-        secaRodadas,
-        secaMinutos,
-        secaInicioTimeStr,
-        tiros,
-        status,
-        velaGreen,
-        tiroGreen,
-        tempoRestanteSeg,
-      });
-    }
-  }
-
-  // Ordenar sinais: primeiro os que estão com SINAL_ATIVO (mais próximos de acontecer), depois os mais recentes
-  sinais.sort((a, b) => {
-    if (a.status === 'SINAL_ATIVO' && b.status !== 'SINAL_ATIVO') return -1;
-    if (b.status === 'SINAL_ATIVO' && a.status !== 'SINAL_ATIVO') return 1;
-    return b.tempoProjetadoMs - a.tempoProjetadoMs;
-  });
-
-  // Ranking de todos os tempos da grade com busca binária
-  const gradeTempos = [45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120];
-  const rankingTempos: RankingTempoLongo[] = gradeTempos.map((t) => {
-    let greens = 0;
-    let losses = 0;
-    let ativos = 0;
-
-    for (const g of gatilhos) {
-      const gTime = getRoundTime(g);
-      const tProj = gTime + t * 60 * 1000;
-      const fim = tProj + 2 * 60 * 1000;
-
-      const sIdx = findFirstIndexAtOrAfter(sorted, tProj - 60000);
-
-      if (sIdx !== -1 && getRoundTime(sorted[sIdx]) <= fim) {
-        const slice = sorted.slice(sIdx, sIdx + 5);
-        if (slice.some((v) => v.result >= alvoMult)) {
-          greens++;
-        } else if (effectiveNowMs > fim) {
-          losses++;
-        } else {
-          ativos++;
-        }
-      } else {
-        if (effectiveNowMs > fim) losses++;
-        else ativos++;
-      }
-    }
-
-    const totalFinalizados = greens + losses;
-    const assertividade = totalFinalizados > 0 ? (greens / totalFinalizados) * 100 : 0;
-    // ROI estimado assumindo 5 tiros e payout alvoMult
-    const roiEstimado = totalFinalizados > 0 ? ((greens * alvoMult - totalFinalizados * 5) / (totalFinalizados * 5)) * 100 : 0;
-
-    return {
-      minutos: t,
-      totalGatilhos: gatilhos.length,
-      greens,
-      losses,
-      ativos,
-      assertividade: Math.round(assertividade * 10) / 10,
-      roiEstimado: Math.round(roiEstimado),
-    };
-  });
-
-  rankingTempos.sort((a, b) => b.assertividade - a.assertividade);
-
-  const sinaisAtivos = sinais.filter((s) => s.status === 'SINAL_ATIVO' && s.tempoProjetadoMs > effectiveNowMs);
-  sinaisAtivos.sort((a, b) => a.tempoProjetadoMs - b.tempoProjetadoMs);
-  const proximoSinalAtivo = sinaisAtivos[0];
-
-  const sinaisFinalizados = sinais.filter((s) => s.status !== 'SINAL_ATIVO');
-  const greensTotal = sinaisFinalizados.filter((s) => s.status === 'GREEN').length;
-  const taxaAcertoGeral =
-    sinaisFinalizados.length > 0 ? Math.round((greensTotal / sinaisFinalizados.length) * 100) : 0;
-
-  return {
-    sinais,
-    rankingTempos,
-    proximoSinalAtivo,
-    taxaAcertoGeral,
-  };
+  return processarProjecaoCiclosSeca(
+    rounds,
+    intervalosLongos,
+    protecaoX,
+    alvoY,
+    faixaSecaAlvo,
+    toleranciaMin
+  );
 }
 
 /* ==========================================================================

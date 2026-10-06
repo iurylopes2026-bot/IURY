@@ -23,6 +23,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { ProjecaoMaximaSection } from './ProjecaoMaximaSection';
+import { PainelMaximasDoDia } from './PainelMaximasDoDia';
 
 interface MosaicoViewProps {
   rounds: CrashRound[];
@@ -284,6 +285,9 @@ export const MosaicoView: React.FC<MosaicoViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* Painel de Máximas do Dia (Conforme Imagem TopGun) */}
+      <PainelMaximasDoDia rounds={dateFilteredRounds} onSelectRound={onSelectRound} />
 
       {/* Seção Projeção de Máxima & Teto Pré-Quebra */}
       <ProjecaoMaximaSection rounds={dateFilteredRounds} onSelectRound={onSelectRound} />

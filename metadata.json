@@ -1,0 +1,6 @@
+{
+  "name": "MOSTRINHO",
+  "description": "Monitor e Mosaico de Velas Aviator em tempo real com projeções rápidas, longas, velas invertidas, velas 100x-1000x e análise do Gatilho da Casa 13x (≥50x).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

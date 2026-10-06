@@ -384,18 +384,24 @@ export const ProjecaoLongaView: React.FC<ProjecaoLongaViewProps> = ({
                   <div className="p-3 border-b border-slate-800/60 bg-slate-950/30 text-[11px] space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400 font-semibold flex items-center gap-1">
-                        🎯 Vela Gatilho:
+                        🎯 Vela Gatilho (Fim da Seca):
                       </span>
                       <strong className="text-pink-400 font-mono-num text-xs">
                         {sinal.gatilhoMult.toFixed(2)}x às {sinal.gatilhoTimeStr}
                       </strong>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono-num bg-slate-900/60 p-1.5 rounded-lg border border-slate-800">
-                      <span>Seca Pré-Gatilho:</span>
-                      <strong className="text-amber-300">
-                        {sinal.secaRodadas} rodadas ({sinal.secaMinutos} min)
-                      </strong>
+                    <div className="text-[10px] text-slate-300 font-mono-num bg-slate-900/80 p-2 rounded-lg border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Início da Seca:</span>
+                        <strong className="text-purple-300">às {sinal.secaInicioTimeStr}</strong>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Duração da Seca:</span>
+                        <strong className="text-amber-300">
+                          {sinal.secaRodadas} rodadas ({sinal.secaMinutos} min)
+                        </strong>
+                      </div>
                     </div>
                   </div>
 

@@ -83,13 +83,20 @@ export interface QuebraMaximaItem {
   secaInicioTimeStr: string;
   secaFimTimeMs: number;
   secaFimTimeStr: string;
+  multInicioSeca: number;
+  horarioInicioSeca: string;
+  velaInicioSeca?: CrashRound;
+  multFimSeca: number;
+  horarioFimSeca: string;
+  velaFimSeca: CrashRound;
   isMaiorSecaDoDia: boolean;
   maiorSecaAnteriorRodadas: number;
   // Teto Pré-Quebra (10 minutos antes: [timestamp - 10m, timestamp])
   valorTetoRosa: number;
   horarioTetoRosa?: string;
   veioDe10mRosa: boolean;
-  rosas10m: RosaItemPre[];
+  rosas10m: RosaItemPre[]; // Rosas nos 10 minutos antes do fim da seca
+  rosasInicio10m: RosaItemPre[]; // Rosas nos 10 minutos antes do início da seca
   valorProtecaoRoxa: number; // Maior roxa 4x-9.99x até 5 minutos antes
   horarioProtecaoRoxa?: string;
   tetoAltoBatido: boolean; // Se a vela de quebra ou alguma posterior bateu valorTetoRosa
@@ -137,19 +144,33 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
       let secaRodadas = 0;
       let secaInicioTimeMs = rTime;
       let secaInicioTimeStr = formatBrTime(r.instant);
+      let multInicioSeca = 0;
+      let horarioInicioSeca = '--:--:--';
+      let velaInicioSeca: CrashRound | undefined = undefined;
 
       if (ultimaRosaIdx >= 0) {
+        velaInicioSeca = sorted[ultimaRosaIdx];
+        multInicioSeca = sorted[ultimaRosaIdx].result;
+        horarioInicioSeca = formatBrTime(sorted[ultimaRosaIdx].instant);
         secaRodadas = i - ultimaRosaIdx - 1;
         secaInicioTimeMs = getRoundTime(sorted[ultimaRosaIdx]);
-        secaInicioTimeStr = formatBrTime(sorted[ultimaRosaIdx].instant);
+        secaInicioTimeStr = horarioInicioSeca;
       } else {
         secaRodadas = i;
-        secaInicioTimeMs = getRoundTime(sorted[0]);
-        secaInicioTimeStr = formatBrTime(sorted[0].instant);
+        if (sorted.length > 0) {
+          velaInicioSeca = sorted[0];
+          multInicioSeca = sorted[0].result;
+          horarioInicioSeca = formatBrTime(sorted[0].instant);
+          secaInicioTimeMs = getRoundTime(sorted[0]);
+        }
+        secaInicioTimeStr = horarioInicioSeca;
       }
 
+      const velaFimSeca = r;
+      const multFimSeca = r.result;
+      const horarioFimSeca = formatBrTime(r.instant);
       const secaFimTimeMs = rTime;
-      const secaFimTimeStr = formatBrTime(r.instant);
+      const secaFimTimeStr = horarioFimSeca;
       const secaMinutos = Math.max(1, Math.round(Math.abs(secaFimTimeMs - secaInicioTimeMs) / 60000));
 
       const isMaiorSecaDoDia = secaRodadas > recordeSecaDoDia;
@@ -186,15 +207,25 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
         }
       }
 
-      // 3. Teto de Rosa (>= 10.00x) até 10 minutos antes da quebra
-      const dezMinAntes = rTime - 10 * 60 * 1000;
+      // 3. Teto de Rosa (>= 10.00x) até 10 minutos antes do fim da seca
+      const dezMinAntesFim = rTime - 10 * 60 * 1000;
       const velasPre10m = sorted.slice(0, i).filter((v) => {
         const vt = getRoundTime(v);
-        return vt >= dezMinAntes && vt <= rTime;
+        return vt >= dezMinAntesFim && vt <= rTime;
       });
 
       const rosasPre10m = velasPre10m.filter((v) => v.result >= 10.0);
       const rosas10m: RosaItemPre[] = rosasPre10m.map((v) => ({
+        mult: v.result,
+        timeStr: formatBrTime(v.instant),
+      }));
+
+      // Rosas no início da seca (até 10m antes da vela que iniciou a seca)
+      const dezMinAntesInicio = secaInicioTimeMs - 10 * 60 * 1000;
+      const rosasInicio10m: RosaItemPre[] = sorted.filter((v) => {
+        const vt = getRoundTime(v);
+        return vt >= dezMinAntesInicio && vt <= secaInicioTimeMs && v.result >= 10.0;
+      }).map((v) => ({
         mult: v.result,
         timeStr: formatBrTime(v.instant),
       }));
@@ -211,6 +242,14 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
         valorTetoRosa = bestRosa.result;
         horarioTetoRosa = formatBrTime(bestRosa.instant);
         veioDe10mRosa = true;
+      } else if (rosasInicio10m.length > 0) {
+        let bestRosa = rosasInicio10m[0];
+        for (const rs of rosasInicio10m) {
+          if (rs.mult > bestRosa.mult) bestRosa = rs;
+        }
+        valorTetoRosa = bestRosa.mult;
+        horarioTetoRosa = bestRosa.timeStr;
+        veioDe10mRosa = false;
       } else {
         // Fallback: última rosa anterior no histórico
         if (ultimaRosaIdx >= 0) {
@@ -266,12 +305,19 @@ export function analisarQuebrasDeMaxima(rounds: CrashRound[]): QuebraMaximaItem[
         secaInicioTimeStr,
         secaFimTimeMs,
         secaFimTimeStr,
+        multInicioSeca,
+        horarioInicioSeca,
+        velaInicioSeca,
+        multFimSeca,
+        horarioFimSeca,
+        velaFimSeca,
         isMaiorSecaDoDia,
         maiorSecaAnteriorRodadas,
         valorTetoRosa: valorTetoRosa || 10.0,
         horarioTetoRosa,
         veioDe10mRosa,
         rosas10m,
+        rosasInicio10m,
         valorProtecaoRoxa: valorProtecaoRoxa || 4.0,
         horarioProtecaoRoxa,
         tetoAltoBatido,

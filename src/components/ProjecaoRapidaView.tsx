@@ -254,7 +254,7 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
                           <span className="text-xs font-bold text-slate-300">
                             QUEBRA DE MÁXIMA:
                           </span>
-                          <span className="text-lg font-black text-pink-400 font-mono-num">
+                          <span className="text-xl font-black text-pink-400 font-mono-num">
                             {ciclo.maxima.toFixed(2)}x
                           </span>
                           <span className="text-xs text-slate-400 font-mono-num">
@@ -286,8 +286,97 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
                     </div>
                   </div>
 
-                  {/* BANNER DA BASE DE TETO (10 MIN ANTES DA QUEBRA) + DADOS DA SECA */}
-                  <div className="my-4 p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 text-xs space-y-2.5">
+                  {/* PAINEL PROEMINENTE: ONDE COMEÇOU, ONDE TERMINOU E QUANTIDADE DA SECA */}
+                  <div className="my-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {/* 1. Onde Começou a Seca */}
+                    <div className="p-3 rounded-xl bg-slate-950/90 border border-purple-500/40 shadow-sm flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase text-purple-400 tracking-wider">
+                        <span>🛑 INÍCIO DA SECA</span>
+                        <span className="text-slate-500">Última Rosa</span>
+                      </div>
+                      <div className="my-1.5 flex items-baseline gap-2">
+                        <strong className="text-lg font-black text-white font-mono-num">
+                          {quebra.multInicioSeca > 0 ? `${quebra.multInicioSeca.toFixed(2)}x` : '00:00:01'}
+                        </strong>
+                        <span className="text-xs text-purple-300 font-mono-num">
+                          às {quebra.horarioInicioSeca}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        Vela onde a casa travou as rosas
+                      </span>
+                    </div>
+
+                    {/* 2. Onde Terminou a Seca */}
+                    <div className="p-3 rounded-xl bg-slate-950/90 border border-pink-500/40 shadow-sm flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase text-pink-400 tracking-wider">
+                        <span>⚡ FIM DA SECA</span>
+                        <span className="text-pink-400/80 font-bold">Gatilho T0</span>
+                      </div>
+                      <div className="my-1.5 flex items-baseline gap-2">
+                        <strong className="text-lg font-black text-pink-400 font-mono-num">
+                          {quebra.multFimSeca.toFixed(2)}x
+                        </strong>
+                        <span className="text-xs text-pink-300 font-mono-num">
+                          às {quebra.horarioFimSeca}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        Vela que rompeu a retenção
+                      </span>
+                    </div>
+
+                    {/* 3. Quantidade da Seca */}
+                    <div className="p-3 rounded-xl bg-slate-950/90 border border-amber-500/40 shadow-sm flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase text-amber-400 tracking-wider">
+                        <span>⏳ QUANTIDADE DA SECA</span>
+                        <span className="text-amber-400/80">Retenção</span>
+                      </div>
+                      <div className="my-1.5 flex items-baseline gap-2">
+                        <strong className="text-lg font-black text-amber-300 font-mono-num">
+                          {quebra.secaRodadas} Rodadas
+                        </strong>
+                        <span className="text-xs text-amber-400/80 font-mono-num">
+                          ({quebra.secaMinutos} min)
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        Tempo total que a casa segurou
+                      </span>
+                    </div>
+
+                    {/* 4. Superação do Recorde Anterior do Dia */}
+                    <div className="p-3 rounded-xl bg-slate-950/90 border border-cyan-500/40 shadow-sm flex flex-col justify-between">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase text-cyan-400 tracking-wider">
+                        <span>🏆 STATUS DO DIA</span>
+                        {quebra.isMaiorSecaDoDia && (
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded font-bold">
+                            RECORDE
+                          </span>
+                        )}
+                      </div>
+                      <div className="my-1.5">
+                        {quebra.isMaiorSecaDoDia ? (
+                          <span className="text-sm font-black text-emerald-400 block">
+                            MAIOR SECA DO DIA!
+                          </span>
+                        ) : (
+                          <span className="text-sm font-bold text-slate-200 block">
+                            Seca Monitorada
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-400 block font-mono-num">
+                          Seca anterior: {quebra.maiorSecaAnteriorRodadas} rodadas
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-500">
+                        Comparativo com maior seca do dia
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* BANNER DA BASE DE TETO (10 MIN ANTES DA QUEBRA) + TODAS AS ROSAS */}
+                  <div className="my-4 p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 text-xs space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-black text-[10px] tracking-wide border border-cyan-500/40 flex items-center gap-1">
@@ -295,98 +384,76 @@ export const ProjecaoRapidaView: React.FC<ProjecaoRapidaViewProps> = ({
                           BASE DE TETO (10 MIN ANTES DA QUEBRA)
                         </span>
                         <span className="text-slate-400 text-[11px]">
-                          Velas anteriores à quebra ({ciclo.horarioQuebra}):
+                          Velas anteriores ao fim da seca ({ciclo.horarioQuebra}):
                         </span>
                       </div>
 
-                      {/* Destaque de Maior Seca */}
-                      {quebra.isMaiorSecaDoDia && (
-                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/30 flex items-center gap-1">
-                          <Award className="w-3 h-3 text-amber-400" />
-                          MAIOR SECA DO DIA! (Superou {quebra.maiorSecaAnteriorRodadas} rodadas)
+                      {/* Teto de Roxa (5m antes) */}
+                      <div className="flex items-center gap-2 text-xs font-mono-num">
+                        <span className="text-slate-400">Previsão Proteção (Roxa 4x-9.99x até 5m antes):</span>
+                        <strong className="text-purple-300 bg-purple-950/70 px-2 py-0.5 rounded border border-purple-500/30">
+                          {quebra.valorProtecaoRoxa > 0
+                            ? `${quebra.valorProtecaoRoxa.toFixed(2)}x ${
+                                quebra.horarioProtecaoRoxa ? `(${quebra.horarioProtecaoRoxa})` : ''
+                              }`
+                            : 'Sem roxa nos 5m'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* BLOCO DEDICADO: TODAS AS VELAS ROSAS QUE SAÍRAM 10 MINUTOS ANTES DO FIM DA SECA */}
+                    <div className="p-3 rounded-xl bg-slate-950/90 border border-pink-500/40 space-y-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-black uppercase text-pink-300 tracking-wide flex items-center gap-1.5">
+                          🌸 TETO DE ROSA: TODAS AS VELAS ROSAS QUE SAÍRAM 10 MINUTOS ANTES DO FIM DA SECA ({ciclo.horarioQuebra})
                         </span>
-                      )}
-                    </div>
-
-                    {/* Linha 1: Previsão de Proteção Roxa (5m antes) e Teto Alto (10m antes) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
-                      <div className="flex items-center gap-2 bg-slate-950/70 p-2 rounded-lg border border-purple-500/20">
-                        <Shield className="w-4 h-4 text-purple-400 shrink-0" />
-                        <div>
-                          <span className="text-[10px] text-slate-400 block font-medium">
-                            Previsão Proteção (Roxa 4x-9.99x):
-                          </span>
-                          <span className="text-xs font-bold text-purple-300 font-mono-num">
-                            {quebra.valorProtecaoRoxa > 0
-                              ? `${quebra.valorProtecaoRoxa.toFixed(2)}x ${
-                                  quebra.horarioProtecaoRoxa ? `(${quebra.horarioProtecaoRoxa})` : ''
-                                }`
-                              : 'Sem roxa nos 5m'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 bg-slate-950/70 p-2 rounded-lg border border-pink-500/20">
-                        <Target className="w-4 h-4 text-pink-400 shrink-0" />
-                        <div>
-                          <span className="text-[10px] text-slate-400 block font-medium">
-                            Teto Alto (≥10x pré-quebra):
-                          </span>
-                          <span className="text-xs font-bold text-pink-300 font-mono-num">
-                            {quebra.valorTetoRosa > 0
-                              ? `${quebra.valorTetoRosa.toFixed(2)}x ${
-                                  quebra.horarioTetoRosa ? `(${quebra.horarioTetoRosa})` : ''
-                                }`
-                              : '10.00x'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Duração e Horários da Seca */}
-                      <div className="flex items-center gap-2 bg-slate-950/70 p-2 rounded-lg border border-amber-500/20 sm:col-span-2 lg:col-span-1">
-                        <Flame className="w-4 h-4 text-amber-400 shrink-0" />
-                        <div>
-                          <span className="text-[10px] text-slate-400 block font-medium">
-                            Duração da Seca (Ausência de Rosa):
-                          </span>
-                          <span className="text-xs font-bold text-amber-300 font-mono-num">
-                            {quebra.secaRodadas} Rodadas ({quebra.secaMinutos} min)
-                          </span>
-                          <span className="text-[10px] text-slate-500 block font-mono-num">
-                            Início: {quebra.secaInicioTimeStr} • Fim: {quebra.secaFimTimeStr}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Linha 2: Rosas que saíram nos 10 minutos anteriores */}
-                    <div className="flex items-center gap-2 flex-wrap pt-1 text-[11px]">
-                      <span className="text-slate-400 font-semibold flex items-center gap-1">
-                        🌸 Saiu antes (10 minutos):
-                      </span>
-                      {quebra.rosas10m.length > 0 ? (
-                        <>
-                          <div className="flex items-center gap-1.5 flex-wrap font-mono-num">
-                            {quebra.rosas10m.map((r, rIdx) => (
-                              <span
-                                key={rIdx}
-                                className="px-1.5 py-0.5 rounded bg-pink-950/70 border border-pink-500/40 text-pink-300 font-bold"
-                              >
-                                {r.mult.toFixed(2)}x
-                              </span>
-                            ))}
-                          </div>
-                          <span className="text-slate-400">
-                            | Maior:{' '}
-                            <strong className="text-pink-400 font-mono-num font-bold">
+                        {quebra.valorTetoRosa > 0 && (
+                          <span className="text-xs text-slate-300 font-mono-num">
+                            Maior Rosa de Teto:{' '}
+                            <strong className="text-pink-400 text-sm font-black">
                               {quebra.valorTetoRosa.toFixed(2)}x
                             </strong>
                           </span>
-                        </>
+                        )}
+                      </div>
+
+                      {quebra.rosas10m.length > 0 ? (
+                        <div className="flex items-center gap-2 flex-wrap font-mono-num pt-1">
+                          {quebra.rosas10m.map((r, rIdx) => (
+                            <div
+                              key={rIdx}
+                              className="px-2.5 py-1 rounded-lg bg-pink-950/80 border border-pink-500/50 text-pink-200 font-bold flex items-center gap-1.5 text-xs shadow-sm hover:scale-105 transition-transform"
+                            >
+                              <span className="text-white font-black">{r.mult.toFixed(2)}x</span>
+                              <span className="text-[10px] text-pink-400 opacity-80">às {r.timeStr}</span>
+                            </div>
+                          ))}
+                        </div>
                       ) : (
-                        <span className="text-slate-500 italic">
-                          Nenhuma vela rosa nos 10m anteriores (seca profunda).
-                        </span>
+                        <div className="text-xs text-slate-400 bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+                          <p className="text-slate-300 font-semibold">
+                            ⚠️ Nenhuma vela rosa saiu nos 10 minutos anteriores ao rompimento devido à retenção da seca contínua de {quebra.secaRodadas} rodadas ({quebra.secaMinutos} min).
+                          </p>
+                          <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-400 pt-0.5">
+                            <span>Vela rosa que iniciou esta seca:</span>
+                            <span className="px-2 py-0.5 rounded bg-purple-950 border border-purple-500/40 text-purple-300 font-bold font-mono-num">
+                              {quebra.multInicioSeca > 0 ? `${quebra.multInicioSeca.toFixed(2)}x às ${quebra.horarioInicioSeca}` : '00:00:01'}
+                            </span>
+                            {quebra.rosasInicio10m.length > 0 && (
+                              <>
+                                <span>• Rosas antes do início da seca:</span>
+                                {quebra.rosasInicio10m.map((ri, riIdx) => (
+                                  <span
+                                    key={riIdx}
+                                    className="px-1.5 py-0.5 rounded bg-pink-950/60 border border-pink-500/30 text-pink-300 font-bold font-mono-num text-[10px]"
+                                  >
+                                    {ri.mult.toFixed(2)}x ({ri.timeStr})
+                                  </span>
+                                ))}
+                              </>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
